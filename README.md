@@ -80,7 +80,17 @@ Bağlantıyı ekledikten sonra **Test et**'e basın: son 7 günün siparişleri 
 - **Ticimax'ta pazaryeri siparişleri "Web sitesi" görünüyorsa:** Test mesajındaki "Kanal alanları" kısmında pazaryeri adını taşıyan alanı bulun ve bağlantıdaki **Satış kanalı alanı (gelişmiş)** kutusuna yazın.
 - Düzeltmeden sonra eski siparişlerin de güncellenmesi için bağlantıda **Geçmişi yeniden çek**'e basın.
 
-## Kendi bilgisayarında çalıştırmak (Mac)
+## Kendi bilgisayarında Docker ile çalıştırmak
+
+Docker Desktop açıkken Terminal'de:
+
+```bash
+bash ~/Documents/panel/docker-baslat.sh
+```
+
+Panel `panel-local` adlı container olarak başlar ve `http://localhost:8000` adresinde açılır. Docker Desktop açık olduğu sürece arka planda çalışmaya devam eder (Terminal'i kapatabilirsin). Durdurmak için: `docker compose -f docker-compose.local.yml down`
+
+## Kendi bilgisayarında Docker olmadan çalıştırmak (Mac)
 
 Terminal'i aç ve şunu yaz:
 

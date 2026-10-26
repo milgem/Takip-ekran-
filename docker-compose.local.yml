@@ -1,0 +1,15 @@
+# Kendi bilgisayarında Docker ile çalıştırmak için (alan adı / HTTPS gerekmez).
+# Başlatma:  bash docker-baslat.sh
+services:
+  panel:
+    build: .
+    container_name: panel-local
+    restart: unless-stopped
+    env_file: .env.local
+    environment:
+      - DATABASE_URL=sqlite:////srv/data/panel.db
+      - COOKIE_SECURE=0
+    volumes:
+      - ./data:/srv/data
+    ports:
+      - "127.0.0.1:8000:8000"   # sadece bu bilgisayardan erişilir
