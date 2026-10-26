@@ -30,15 +30,26 @@
 {% if alerts %}
 <div class="alerts">
   {% for firm, a in alerts %}
-  <a class="alert {{ a.level }}" href="/firma/{{ firm.id }}"><span>{{ '●' if a.level == 'red' else '▲' }}</span><span><b>{{ firm.name }}</b> — {{ a.text }}</span></a>
+  <a class="alert {{ a.level }}" href="/firma/{{ firm.id }}{{ '/urunler' if a.tab == 'urunler' else ('#' ~ a.tab if a.tab else '') }}"><span>{{ '●' if a.level == 'red' else ('✓' if a.level == 'green' else '▲') }}</span><span class="alert-text"><b>{{ firm.name }}</b> — {{ a.text }}</span>{% if a.smart %}<span class="smart-tag">Akıllı uyarı</span>{% endif %}</a>
   {% endfor %}
 </div>
 {% endif %}
 
-<div class="grid">
+{% if cards|length > 1 %}
+<div class="row" style="justify-content:flex-end;margin-bottom:10px">
+  <label class="inline small muted" for="card-sort">Sırala
+    <select id="card-sort" data-sort-cards="firm-grid" class="sort-select">
+      <option value="default">Varsayılan</option><option value="revenue">Ciro (büyükten küçüğe)</option>
+      <option value="spend">Reklam harcaması</option><option value="roas">ROAS</option>
+      <option value="orders">Sipariş sayısı</option><option value="leads">Lead</option><option value="name">Firma adı (A–Z)</option>
+    </select></label>
+</div>
+{% endif %}
+<div class="grid" id="firm-grid">
 {% for c in cards %}
   {% set f = c.firm %}
-  <a class="card" href="/firma/{{ f.id }}?p={{ preset if preset != 'ozel' else '30g' }}">
+  <a class="card" data-name="{{ f.name }}" data-revenue="{{ c.cur.revenue }}" data-spend="{{ c.cur.spend }}"
+     data-roas="{{ c.cur.roas or '' }}" data-orders="{{ c.cur.orders }}" data-leads="{{ c.cur.leads }}" href="/firma/{{ f.id }}?p={{ preset if preset != 'ozel' else '30g' }}">
     <div class="firm-head">
       <span class="dot" style="background:{{ f.color }}"></span>
       <h3>{{ f.name }}</h3>

@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from . import config
 from .channels import WEB, is_marketplace
 from .connectors import AD_KINDS, STORE_KINDS
-from .db import AdDaily, Firm, Order
+from .db import AdCampaignDaily, AdDaily, Firm, Order
 
 PRESETS = {
     "bugun": "Bugün", "dun": "Dün", "7g": "Son 7 gün", "30g": "Son 30 gün", "buay": "Bu ay", "gecenay": "Geçen ay",
@@ -207,8 +207,10 @@ def hourly_today(s, firm_id: int) -> dict:
 
 @dataclass
 class Alert:
-    level: str   # "red" | "amber"
+    level: str   # "red" | "amber" | "green"
     text: str
+    tab: str = ""        # ilgili firma sekmesi (ozet, satis, siparis, urunler, reklam)
+    smart: bool = False  # akıllı uyarı mı
 
 
 def firm_card(s, firm: Firm, start: date, end: date, preset: str) -> dict:
@@ -232,6 +234,10 @@ def firm_card(s, firm: Firm, start: date, end: date, preset: str) -> dict:
         alerts.append(Alert("amber", f"Ciro önceki döneme göre %{abs(rc):.0f} düşük"))
     if kinds & AD_KINDS and cur.spend and prev.spend and (cur.spend - prev.spend) / prev.spend > 0.5:
         alerts.append(Alert("amber", "Reklam harcaması önceki döneme göre %50+ arttı"))
+    from . import insights
+    smart = insights.smart_alerts(s, firm, lambda level, text, tab="": Alert(level, text, tab, True))
+    alerts = smart + alerts
+    alerts.sort(key=lambda a: {"red": 0, "amber": 1, "green": 2}.get(a.level, 3))
     return {
         "firm": firm, "kinds": kinds, "has_store": bool(kinds & STORE_KINDS), "has_ads": bool(kinds & AD_KINDS),
         "cur": cur, "prev": prev, "pending": pend, "pending_old": pend_old, "alerts": alerts,
@@ -241,3 +247,41 @@ def firm_card(s, firm: Firm, start: date, end: date, preset: str) -> dict:
                 "roas": change(cur.roas, prev.roas), "leads": change(cur.leads, prev.leads),
                 "aov": change(cur.aov, prev.aov), "cpl": change(cur.cpl, prev.cpl)},
     }
+
+
+def campaigns(s, firm_id: int, start: date, end: date) -> list[dict]:
+    """Kampanya bazında dönem toplamları ve önceki döneme göre harcama değişimi."""
+    def grab(a, b):
+        q = select(AdCampaignDaily.source, AdCampaignDaily.campaign_id,
+                   func.sum(AdCampaignDaily.spend), func.sum(AdCampaignDaily.impressions),
+                   func.sum(AdCampaignDaily.clicks), func.sum(AdCampaignDaily.conversions),
+                   func.sum(AdCampaignDaily.conversion_value), func.sum(AdCampaignDaily.leads)).where(
+            AdCampaignDaily.firm_id == firm_id, AdCampaignDaily.day >= a, AdCampaignDaily.day <= b).group_by(
+            AdCampaignDaily.source, AdCampaignDaily.campaign_id)
+        return {(r[0], r[1]): r[2:] for r in s.execute(q)}
+    cur = grab(start, end)
+    if not cur:
+        return []
+    prev = grab(*previous(start, end))
+    # kampanyanın en güncel adı ve durumu
+    latest = {}
+    for src, cid, name, st, day in s.execute(select(
+            AdCampaignDaily.source, AdCampaignDaily.campaign_id, AdCampaignDaily.name, AdCampaignDaily.status,
+            AdCampaignDaily.day).where(AdCampaignDaily.firm_id == firm_id, AdCampaignDaily.day <= end).order_by(
+            AdCampaignDaily.day)):
+        latest[(src, cid)] = (name, st)
+    total_spend = sum(float(v[0] or 0) for v in cur.values()) or 0
+    rows = []
+    for key, (sp, im, cl, cv, val, ld) in cur.items():
+        sp, im, cl, cv, val, ld = float(sp or 0), int(im or 0), int(cl or 0), float(cv or 0), float(val or 0), float(ld or 0)
+        name, st = latest.get(key, ("", ""))
+        rows.append({
+            "source": key[0], "id": key[1], "name": name or key[1], "status": st,
+            "spend": sp, "impressions": im, "clicks": cl, "conversions": cv, "value": val, "leads": ld,
+            "ctr": cl / im * 100 if im else None, "cpc": sp / cl if cl else None,
+            "roas": val / sp if sp else None, "cpa": sp / cv if cv else None, "cpl": sp / ld if ld else None,
+            "share": sp / total_spend * 100 if total_spend else 0,
+            "chg": change(sp, float((prev.get(key) or [0])[0] or 0)),
+        })
+    rows.sort(key=lambda x: -x["spend"])
+    return rows

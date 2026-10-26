@@ -1,4 +1,4 @@
-"""Google Ads API (REST) — müşteri hesabı günlük metrikler.
+"""Google Ads API (REST) — müşteri hesabı ve kampanya bazında günlük metrikler.
 
 Tek MCC (yönetici hesap) altında tüm müşteriler: developer token, OAuth client
 ve refresh token bir kez alınır; her firma için sadece müşteri ID'si değişir.
@@ -9,7 +9,7 @@ from datetime import date
 import httpx
 
 from .. import config
-from .base import AdRow, ConnectorError, Field, FetchResult
+from .base import AdRow, CampaignRow, ConnectorError, Field, FetchResult
 
 KIND = "google_ads"
 TITLE = "Google Ads"
@@ -85,4 +85,22 @@ def fetch(cfg, start: date, end: date) -> FetchResult:
             impressions=int(m.get("impressions", 0)), clicks=int(m.get("clicks", 0)),
             conversions=float(m.get("conversions", 0)), conversion_value=float(m.get("conversionsValue", 0)),
         ))
+    rows = _search(cfg, f"""
+        SELECT campaign.id, campaign.name, campaign.status, segments.date, metrics.cost_micros,
+               metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value
+        FROM campaign
+        WHERE segments.date BETWEEN '{start.isoformat()}' AND '{end.isoformat()}'
+          AND metrics.impressions > 0""")
+    for r in rows:
+        m, c = r.get("metrics", {}), r.get("campaign", {})
+        res.campaigns.append(CampaignRow(
+            day=date.fromisoformat(r["segments"]["date"]), campaign_id=str(c.get("id", "")), name=c.get("name", ""),
+            status=STATUS_TR.get(c.get("status", ""), c.get("status", "")),
+            spend=int(m.get("costMicros", 0)) / 1_000_000,
+            impressions=int(m.get("impressions", 0)), clicks=int(m.get("clicks", 0)),
+            conversions=float(m.get("conversions", 0)), conversion_value=float(m.get("conversionsValue", 0)),
+        ))
     return res
+
+
+STATUS_TR = {"ENABLED": "Aktif", "PAUSED": "Duraklatıldı", "REMOVED": "Kaldırıldı"}

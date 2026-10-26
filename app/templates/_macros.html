@@ -18,3 +18,16 @@
 {%- endmacro %}
 
 {% macro kind_name(k) -%}{{ REGISTRY[k].TITLE }}{%- endmacro %}
+
+{% macro firm_tabs(firm, has_store, has_ads, preset, start, end, current, pending=0) -%}
+{%- set qs = ('bas=' ~ start.isoformat() ~ '&bit=' ~ end.isoformat()) if preset == 'ozel' else ('p=' ~ preset) -%}
+{%- set base = '' if current == 'firma' else '/firma/' ~ firm.id ~ '?' ~ qs -%}
+<nav class="tabs" aria-label="Bölümler" data-tabs="{{ 'local' if current == 'firma' else 'links' }}">
+  <a href="{{ base }}#ozet" data-tab="ozet">Özet</a>
+  {% if has_store %}<a href="{{ base }}#satis" data-tab="satis">Satış kanalları</a>
+  <a href="{{ base }}#siparis" data-tab="siparis">Siparişler{% if pending %} <span class="count-badge" title="Kargolanmayı bekleyen sipariş">{{ pending }} bekleyen</span>{% endif %}</a>
+  <a href="/firma/{{ firm.id }}/urunler?{{ qs }}" class="{{ 'on' if current == 'urunler' }}" {% if current == 'urunler' %}aria-current="page"{% endif %}>Ürünler</a>{% endif %}
+  {% if has_ads %}<a href="{{ base }}#reklam" data-tab="reklam">Reklam &amp; kampanyalar</a>{% endif %}
+  <a href="{{ base }}#baglanti" data-tab="baglanti">Bağlantılar</a>
+</nav>
+{%- endmacro %}

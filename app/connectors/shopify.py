@@ -12,7 +12,7 @@ import httpx
 
 from .. import config
 from .. import channels
-from .base import ConnectorError, Field, FetchResult, OrderRow
+from .base import ItemRow, StockRow, ConnectorError, Field, FetchResult, OrderRow
 
 KIND = "shopify"
 TITLE = "Shopify"
@@ -29,13 +29,19 @@ _token_cache: dict[str, tuple[str, float]] = {}
 
 ORDERS_QUERY = """
 query Orders($cursor: String, $q: String!) {
-  orders(first: 250, after: $cursor, query: $q, sortKey: CREATED_AT) {
+  orders(first: 25, after: $cursor, query: $q, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
       id name createdAt cancelledAt sourceName tags
       app { name }
       displayFinancialStatus displayFulfillmentStatus
       currentTotalPriceSet { shopMoney { amount currencyCode } }
+      lineItems(first: 30) { nodes {
+        name variantTitle sku currentQuantity
+        discountedTotalSet { shopMoney { amount } }
+        variant { id barcode } product { id title }
+      } }
+      __CUSTOMER__
     }
   }
 }"""
@@ -98,11 +104,83 @@ def test(cfg) -> str:
     return msg
 
 
+CUSTOMER_FIELDS = "customer { displayName } billingAddress { name }"
+
+
+def _orders_page(cfg, cursor, q):
+    """Müşteri adıyla dener; uygulamanın müşteri verisi izni yoksa isimsiz sorguya döner."""
+    try:
+        return _gql(cfg, ORDERS_QUERY.replace("__CUSTOMER__", CUSTOMER_FIELDS), {"cursor": cursor, "q": q})["orders"]
+    except ConnectorError as e:
+        if "yetki" in str(e).lower() and "token" in str(e).lower():
+            raise
+        return _gql(cfg, ORDERS_QUERY.replace("__CUSTOMER__", ""), {"cursor": cursor, "q": q})["orders"]
+
+
+def _gid(v) -> str:
+    return str(v or "").rsplit("/", 1)[-1]
+
+
+def _line_items(n) -> list:
+    out = []
+    for li in ((n.get("lineItems") or {}).get("nodes") or []):
+        qty = float(li.get("currentQuantity") or 0)      # iade/iptal edilen adetler düşülmüş
+        if qty <= 0:
+            continue
+        var, prod = li.get("variant") or {}, li.get("product") or {}
+        title = li.get("variantTitle") or ""
+        out.append(ItemRow(
+            product_id=_gid(prod.get("id")), variant_id=_gid(var.get("id")), sku=li.get("sku") or "",
+            barcode=var.get("barcode") or "", name=prod.get("title") or li.get("name") or "",
+            variant="" if title == "Default Title" else title, quantity=qty,
+            amount=float(((li.get("discountedTotalSet") or {}).get("shopMoney") or {}).get("amount") or 0)))
+    return out
+
+
+VARIANTS_QUERY = """
+query Variants($cursor: String) {
+  productVariants(first: 250, after: $cursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id title sku barcode inventoryQuantity price
+      selectedOptions { name value }
+      product { id title status }
+    }
+  }
+}"""
+
+SIZE_HINTS = ("beden", "numara", "size", "olcu", "ölçü", "boy")
+
+
+def fetch_stock(cfg) -> list:
+    rows, cursor = [], None
+    while True:
+        conn = _gql(cfg, VARIANTS_QUERY, {"cursor": cursor})["productVariants"]
+        for v in conn["nodes"]:
+            opts = [(o["name"], o["value"]) for o in v.get("selectedOptions") or [] if o.get("value") != "Default Title"]
+            sizes = [val for nm, val in opts if any(h in nm.lower() for h in SIZE_HINTS)]
+            others = [val for nm, val in opts if not any(h in nm.lower() for h in SIZE_HINTS)]
+            p = v.get("product") or {}
+            rows.append(StockRow(
+                product_id=_gid(p.get("id")), variant_id=_gid(v["id"]), product_name=p.get("title") or "",
+                variant=" / ".join(others + sizes), sku=v.get("sku") or "", barcode=v.get("barcode") or "",
+                stock=float(v.get("inventoryQuantity") or 0), price=float(v.get("price") or 0),
+                active=(p.get("status") == "ACTIVE")))
+        if not conn["pageInfo"]["hasNextPage"]:
+            return rows
+        cursor = conn["pageInfo"]["endCursor"]
+
+
+def _customer(n) -> str:
+    c = (n.get("customer") or {}).get("displayName") or (n.get("billingAddress") or {}).get("name") or ""
+    return c.strip()
+
+
 def fetch(cfg, start: date, end: date) -> FetchResult:
     q = f"created_at:>={start.isoformat()} created_at:<{(end + timedelta(days=1)).isoformat()}"
     res, cursor = FetchResult(), None
     while True:
-        conn = _gql(cfg, ORDERS_QUERY, {"cursor": cursor, "q": q})["orders"]
+        conn = _orders_page(cfg, cursor, q)
         for n in conn["nodes"]:
             money = n["currentTotalPriceSet"]["shopMoney"]
             fin, ful = n["displayFinancialStatus"] or "", n["displayFulfillmentStatus"] or ""
@@ -117,7 +195,7 @@ def fetch(cfg, start: date, end: date) -> FetchResult:
                 external_id=n["id"].rsplit("/", 1)[-1], number=n["name"],
                 created_at=_local(n["createdAt"]), total=float(money["amount"]),
                 currency=money["currencyCode"], status=f"{fin} / {ful}",
-                is_cancelled=cancelled, channel=channel,
+                is_cancelled=cancelled, channel=channel, customer=_customer(n), items=_line_items(n),
                 is_pending=not cancelled and ful in ("UNFULFILLED", "PARTIALLY_FULFILLED", "ON_HOLD", "IN_PROGRESS", "SCHEDULED"),
             ))
         if not conn["pageInfo"]["hasNextPage"]:

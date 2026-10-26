@@ -3,6 +3,33 @@ from datetime import date, datetime
 
 
 @dataclass
+class ItemRow:
+    """Sipariş kalemi (bir ürün / beden satırı)."""
+    product_id: str = ""          # ürün kartı
+    variant_id: str = ""          # varyasyon (beden) — stokla eşleştirmek için
+    sku: str = ""
+    barcode: str = ""
+    name: str = ""
+    variant: str = ""             # beden / seçenek metni (platform veriyorsa)
+    quantity: float = 0
+    amount: float = 0             # satır toplamı (adet × birim fiyat)
+
+
+@dataclass
+class StockRow:
+    """Bir varyasyonun (beden) güncel stoğu."""
+    product_id: str
+    variant_id: str
+    product_name: str = ""
+    variant: str = ""             # "42", "L", "Siyah / 42" …
+    sku: str = ""
+    barcode: str = ""
+    stock: float = 0
+    price: float = 0
+    active: bool = True
+
+
+@dataclass
 class OrderRow:
     external_id: str
     number: str
@@ -13,6 +40,9 @@ class OrderRow:
     is_pending: bool = False
     is_cancelled: bool = False
     channel: str = "Web sitesi"   # Web sitesi | Trendyol | Hepsiburada | Amazon | …
+    payment_status: str = ""      # ödeme statüsü (sipariş statüsünden ayrı)
+    customer: str = ""            # müşteri adı soyadı
+    items: list | None = None     # list[ItemRow]; None = kalem bilgisi alınamadı (mevcut kalemler korunur)
 
 
 @dataclass
@@ -27,9 +57,24 @@ class AdRow:
 
 
 @dataclass
+class CampaignRow:
+    day: date
+    campaign_id: str
+    name: str = ""
+    status: str = ""              # Aktif | Duraklatıldı | Kaldırıldı | Arşivlendi
+    spend: float = 0
+    impressions: int = 0
+    clicks: int = 0
+    conversions: float = 0
+    conversion_value: float = 0
+    leads: float = 0
+
+
+@dataclass
 class FetchResult:
     orders: list[OrderRow] = field(default_factory=list)
     ads: list[AdRow] = field(default_factory=list)
+    campaigns: list[CampaignRow] = field(default_factory=list)
 
 
 @dataclass

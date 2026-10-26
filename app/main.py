@@ -17,7 +17,7 @@ from sqlalchemy.orm import selectinload
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import config, metrics, sync
+from . import ai, analysis, config, metrics, sync
 from .connectors import REGISTRY, validate
 from .connectors.base import ConnectorError
 from .db import AdDaily, Firm, Integration, Order, SessionLocal, init_db
@@ -66,7 +66,18 @@ def ago(dt):
     return f"{m // 1440} gün önce"
 
 
-tpl.env.filters.update(tl=tl, num=num, pct=pct, ago=ago)
+def ai_lines(text):
+    """'- ' ile başlayan satırları madde listesine çevirir (HTML kaçışlı)."""
+    out = []
+    for ln in (text or "").splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        out.append(ln[2:].strip() if ln.startswith(("- ", "• ", "* ")) else ln)
+    return out
+
+
+tpl.env.filters.update(tl=tl, num=num, pct=pct, ago=ago, ai_lines=ai_lines)
 tpl.env.globals.update(REGISTRY=REGISTRY, PRESETS=metrics.PRESETS)
 
 
@@ -166,9 +177,19 @@ def firm_detail(request: Request, firm_id: int, p: str = "30g", bas: str | None 
         series = metrics.daily_series(s, firm.id, start, end)
         chans = metrics.channel_breakdown(s, firm.id, start, end) if card["has_store"] else []
         hourly = metrics.hourly_today(s, firm.id) if card["has_store"] else None
-        recent = list(s.scalars(select(Order).where(Order.firm_id == firm.id).order_by(Order.created_at.desc()).limit(15)))
+        best = analysis.bestsellers_by_channel(s, firm.id, start, end) if card["has_store"] else None
+        orders = list(s.scalars(select(Order).where(
+            Order.firm_id == firm.id, Order.created_at >= datetime.combine(start, datetime.min.time()),
+            Order.created_at <= datetime.combine(end, datetime.max.time())).order_by(Order.created_at.desc()).limit(3001)))
+        orders_capped = len(orders) > 3000
+        orders = orders[:3000]
+        # ödeme statüsü yüzünden ciroya girmeyen siparişler ayrı listede gösterilir
+        unpaid = [o for o in orders if o.is_cancelled and o.payment_status]
+        orders = [o for o in orders if not (o.is_cancelled and o.payment_status)]
         pending = list(s.scalars(select(Order).where(Order.firm_id == firm.id, Order.is_pending.is_(True),
-                                                     Order.is_cancelled.is_(False)).order_by(Order.created_at).limit(15)))
+                                                     Order.is_cancelled.is_(False)).order_by(Order.created_at).limit(100)))
+        camps = metrics.campaigns(s, firm.id, start, end) if card["has_ads"] else []
+        ai_note, ai_ready = ai.latest(s, firm.id), ai.ready(s)
         src = {}
         for kind in ("meta", "google_ads"):
             if kind in card["kinds"]:
@@ -179,8 +200,23 @@ def firm_detail(request: Request, firm_id: int, p: str = "30g", bas: str | None 
                 src[kind] = {"spend": sp, "value": float(r[1] or 0), "conv": float(r[2] or 0), "leads": float(r[3] or 0),
                              "clicks": int(r[4] or 0), "roas": (float(r[1] or 0) / sp) if sp else None}
     return tpl.TemplateResponse(request, "firm.html", {
-        "c": card, "firm": firm, "series": series, "chans": chans, "hourly": hourly, "recent": recent, "pending": pending,
-        "src": src, "start": start, "end": end, "preset": preset, "now": datetime.now(config.TIMEZONE)})
+        "c": card, "firm": firm, "series": series, "chans": chans, "hourly": hourly, "orders": orders, "unpaid": unpaid, "best": best, "orders_capped": orders_capped, "pending": pending,
+        "src": src, "camps": camps, "ai_note": ai_note, "ai_ready": ai_ready, "start": start, "end": end, "preset": preset, "now": datetime.now(config.TIMEZONE)})
+
+
+@app.get("/firma/{firm_id}/urunler", response_class=HTMLResponse)
+def firm_products(request: Request, firm_id: int, p: str = "30g", bas: str | None = None, bit: str | None = None,
+                  k: str = ""):
+    start, end, preset = metrics.resolve_range(p, bas, bit)
+    with SessionLocal() as s:
+        firm = s.scalar(select(Firm).options(selectinload(Firm.integrations)).where(Firm.id == firm_id))
+        if not firm:
+            return RedirectResponse("/", 303)
+        a = analysis.product_analysis(s, firm.id, start, end, k if k in ("web", "mp") else "")
+        has_mp = s.scalar(select(func.count(Order.id)).where(Order.firm_id == firm.id, Order.channel != "Web sitesi")) or 0
+    return tpl.TemplateResponse(request, "products.html", {
+        "firm": firm, "a": a, "start": start, "end": end, "preset": preset, "k": k, "has_mp": has_mp > 0,
+        "now": datetime.now(config.TIMEZONE)})
 
 
 # ---------- ayarlar ----------
@@ -188,7 +224,31 @@ def firm_detail(request: Request, firm_id: int, p: str = "30g", bas: str | None 
 def settings(request: Request):
     with SessionLocal() as s:
         firms = _firms(s)
-    return tpl.TemplateResponse(request, "settings.html", {"firms": firms, "cfg": config})
+        ai_st = ai.get_settings(s)
+    return tpl.TemplateResponse(request, "settings.html", {"firms": firms, "cfg": config, "ai_st": ai_st,
+                                                            "ai_key_mask": mask(ai_st.get("api_key", ""))})
+
+
+@app.post("/ayarlar/ai")
+def ai_save(api_key: str = Form(""), model: str = Form(ai.DEFAULT_MODEL), enabled: str = Form(""), hour: int = Form(8)):
+    with SessionLocal() as s:
+        ai.save_settings(s, api_key, model, enabled == "1", hour)
+    return RedirectResponse("/ayarlar#yapay-zeka", 303)
+
+
+@app.post("/ayarlar/ai/test")
+def ai_test():
+    try:
+        with SessionLocal() as s:
+            return {"ok": True, "message": ai.test_connection(s)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "message": str(e)[:300]}
+
+
+@app.post("/firma/{firm_id}/ai")
+def ai_generate(firm_id: int):
+    ok, msg = ai.generate(firm_id)
+    return {"ok": ok, "message": msg}
 
 
 @app.post("/firma/kaydet")

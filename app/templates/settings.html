@@ -28,7 +28,7 @@
   {% for i in f.integrations %}
   <div class="integ">
     <span class="name">{{ REGISTRY[i.kind].TITLE }}{% if i.label %} <span class="muted small">· {{ i.label }}</span>{% endif %}{% if not i.enabled %} <span class="tag">kapalı</span>{% endif %}</span>
-    <span class="status {{ 'bad' if i.last_ok is false }}">{{ '✓ ' if i.last_ok }}{{ i.last_message or 'Henüz senkronize edilmedi' }} · {{ i.last_sync_at|ago }}</span>
+    <span class="status {{ 'bad' if i.last_ok is false }}">{{ '✓ ' if i.last_ok }}{{ i.last_message or 'Henüz senkronize edilmedi' }} · {{ i.last_sync_at|ago }}{% if i.stock_message %} · {{ i.stock_message }}{% endif %}</span>
     <div class="row" style="gap:6px">
       <button class="btn sm" onclick="post('/baglanti/{{ i.id }}/test', this)">Test et</button>
       <button class="btn sm" onclick="post('/baglanti/{{ i.id }}/senkron', this, 900)">↻</button>
@@ -42,6 +42,26 @@
   </div>
 </div>
 {% endfor %}
+
+<div class="card" style="margin-top:14px" id="yapay-zeka">
+  <h2>Yapay zekâ yorumu (Claude)</h2>
+  <p class="muted small" style="margin-top:0">Her sabah seçtiğin saatte her firma için verileri yorumlayan kısa bir değerlendirme yazılır ve firmanın Özet sekmesinde görünür.
+    Claude'a sadece toplam rakamlar gönderilir (ciro, sipariş sayısı, kanal, kampanya ve ürün özetleri); müşteri adı, adres, e-posta ve sipariş numarası gönderilmez.
+    API anahtarı <a class="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> adresinden alınır, kullanım kadar ücretlendirilir.</p>
+  <form method="post" action="/ayarlar/ai" class="stack">
+    <div class="row">
+      <label style="flex:2;min-width:240px">Claude API anahtarı
+        <input name="api_key" type="password" autocomplete="off" placeholder="{{ ('Kayıtlı: ' ~ ai_key_mask ~ ' — değiştirmek için yeni anahtar gir') if ai_key_mask else 'sk-ant-…' }}"></label>
+      <label style="flex:1;min-width:160px">Model<input name="model" value="{{ ai_st.model }}"></label>
+      <label style="width:130px">Günlük yorum saati<input name="hour" type="number" min="0" max="23" value="{{ ai_st.hour }}"></label>
+    </div>
+    <label class="inline"><input type="checkbox" name="enabled" value="1" {{ 'checked' if ai_st.enabled }}> Yapay zekâ yorumunu aç</label>
+    <div class="row">
+      <button class="btn primary sm">Kaydet</button>
+      {% if ai_key_mask %}<button type="button" class="btn sm" onclick="post('/ayarlar/ai/test', this)">Bağlantıyı test et</button>{% endif %}
+    </div>
+  </form>
+</div>
 
 <div class="card" style="margin-top:14px">
   <h2>Yeni firma</h2>
