@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cut">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#1f4d3f">
+<title>{% block title %}Panel{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=1">
+<script src="/static/app.js?v=1"></script>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="/"><i></i>Panel</a>
+  <nav class="main">
+    <a href="/" class="{{ 'on' if active == 'home' }}">Genel</a>
+    <a href="/ayarlar" class="{{ 'on' if active == 'settings' }}">Ayarlar</a>
+    <a href="/cikis" class="hide-sm">Çıkış</a>
+  </nav>
+</div></header>
+<main class="wrap">{% block content %}{% endblock %}</main>
+<div id="toast" class="toast"></div>
+</body>
+</html>

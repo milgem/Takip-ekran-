@@ -1,0 +1,20 @@
+{% macro chg(v, inverse=False) -%}
+{%- if v is not none and v|abs >= 1 -%}
+<span class="badge {{ 'inv' if inverse }} {{ 'up' if v > 0 else 'down' }}">{{ v|pct }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro range_chips(preset, start, end, base) -%}
+<div class="chips">
+  {% for k, label in PRESETS.items() %}<a href="{{ base }}?p={{ k }}" class="{{ 'on' if preset == k }}">{{ label }}</a>{% endfor %}
+  {% if preset == 'ozel' %}<a class="on">{{ start.strftime('%d.%m') }} – {{ end.strftime('%d.%m') }}</a>{% endif %}
+  <a href="#" onclick="document.getElementById('custom').style.display='flex';return false">Tarih seç…</a>
+</div>
+<form id="custom" method="get" action="{{ base }}" class="row" style="display:none;margin-top:8px">
+  <input type="date" name="bas" value="{{ start.isoformat() }}" style="width:auto">
+  <input type="date" name="bit" value="{{ end.isoformat() }}" style="width:auto">
+  <button class="btn sm">Göster</button>
+</form>
+{%- endmacro %}
+
+{% macro kind_name(k) -%}{{ REGISTRY[k].TITLE }}{%- endmacro %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% set active = 'settings' %}
+{% block title %}{{ mod.TITLE }} · {{ firm.name }}{% endblock %}
+{% block content %}
+<a href="/ayarlar" class="muted small">← Ayarlar</a>
+<h1 style="margin:6px 0 16px">{{ firm.name }} · {{ mod.TITLE }}</h1>
+<div class="card" style="max-width:640px">
+  <form method="post" action="/baglanti" class="stack" autocomplete="off">
+    <input type="hidden" name="firm_id" value="{{ firm.id }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    {% if integ %}<input type="hidden" name="id" value="{{ integ.id }}">{% endif %}
+    <label>Etiket <span class="help">İsteğe bağlı, örn. "Ana mağaza" ya da "TR reklam hesabı"</span>
+      <input name="label" value="{{ integ.label if integ else '' }}"></label>
+    {% for f in mod.FIELDS %}
+    <label>{{ f.label }}{% if not f.required %} <span class="help">(isteğe bağlı)</span>{% endif %}
+      <input name="{{ f.name }}" value="{{ values.get(f.name, '') }}" placeholder="{{ f.placeholder }}"
+             {% if f.required %}required{% endif %} {% if f.secret %}type="text" style="-webkit-text-security:disc" spellcheck="false"{% endif %}>
+      {% if f.help %}<span class="help">{{ f.help }}</span>{% endif %}
+    </label>
+    {% endfor %}
+    {% if integ %}<label class="inline"><input type="checkbox" name="enabled" {{ 'checked' if integ.enabled }}> Otomatik senkronizasyon açık</label>{% endif %}
+    <p class="muted small" style="margin:0">Anahtarlar sunucuda şifreli saklanır. Kaydettikten sonra veriler arka planda çekilmeye başlar.</p>
+    <div class="row">
+      <button class="btn primary">Kaydet</button>
+      {% if integ %}
+      <button class="btn sm" formaction="/baglanti/{{ integ.id }}/sifirla" onclick="return confirm('Geçmiş veriler baştan çekilsin mi?')">Geçmişi yeniden çek</button>
+      <button class="btn danger sm" formaction="/baglanti/{{ integ.id }}/sil" formnovalidate onclick="return confirm('Bu bağlantı ve verileri silinsin mi?')">Sil</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

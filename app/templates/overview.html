@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chg, range_chips %}
+{% set active = 'home' %}
+{% block content %}
+<div class="row between" style="margin-bottom:12px">
+  <div>
+    <h1>Genel bakış</h1>
+    <div class="muted small">{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %} · son güncelleme {{ last_sync|ago }}</div>
+  </div>
+  <button class="btn sm" onclick="post('/senkron', this); setTimeout(()=>location.reload(), 20000)">↻ Şimdi güncelle</button>
+</div>
+{{ range_chips(preset, start, end, '/') }}
+
+{% if not cards %}
+  <div class="card empty" style="margin-top:16px">
+    <p>Henüz firma eklenmedi.</p>
+    <a class="btn primary" href="/ayarlar">İlk firmayı ekle</a>
+  </div>
+{% else %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">Toplam ciro</div><div class="v">{{ tot.revenue|tl }}</div>
+    {% if tot.mp_revenue %}<div class="sub">Web {{ tot.web_revenue|tl }} · Pazaryeri {{ tot.mp_revenue|tl }}</div>{% endif %}</div>
+  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ tot.orders|num }}</div></div>
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ tot.spend|tl }}</div></div>
+  <div class="card kpi"><div class="l">ROAS (web)</div><div class="v">{{ tot.roas|num(2) if tot.roas else '–' }}</div></div>
+  {% if tot.leads %}<div class="card kpi"><div class="l">Lead</div><div class="v">{{ tot.leads|num }}</div></div>{% endif %}
+  <div class="card kpi"><div class="l">Bekleyen sipariş</div><div class="v">{{ pending_total|num }}</div></div>
+</div>
+
+{% if alerts %}
+<div class="alerts">
+  {% for firm, a in alerts %}
+  <a class="alert {{ a.level }}" href="/firma/{{ firm.id }}"><span>{{ '●' if a.level == 'red' else '▲' }}</span><span><b>{{ firm.name }}</b> — {{ a.text }}</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid">
+{% for c in cards %}
+  {% set f = c.firm %}
+  <a class="card" href="/firma/{{ f.id }}?p={{ preset if preset != 'ozel' else '30g' }}">
+    <div class="firm-head">
+      <span class="dot" style="background:{{ f.color }}"></span>
+      <h3>{{ f.name }}</h3>
+      <div class="tags">
+        {% for i in f.integrations %}<span class="tag {{ 'err' if i.last_ok is false }}">{{ REGISTRY[i.kind].TITLE.split(' ')[0] }}</span>{% endfor %}
+      </div>
+    </div>
+    <div class="mgrid">
+      {% if c.has_store %}
+      <div class="m"><div class="l">Ciro</div><div class="v">{{ c.cur.revenue|tl }}</div>{{ chg(c.chg.revenue) }}</div>
+      <div class="m"><div class="l">Sipariş</div><div class="v">{{ c.cur.orders|num }}</div>{{ chg(c.chg.orders) }}</div>
+      <div class="m"><div class="l">Sepet ort.</div><div class="v">{{ c.cur.aov|tl }}</div>{{ chg(c.chg.aov) }}</div>
+      {% endif %}
+      {% if c.has_ads %}
+      <div class="m"><div class="l">Reklam</div><div class="v">{{ c.cur.spend|tl }}</div>{{ chg(c.chg.spend, inverse=True) }}</div>
+      {% if c.has_store %}
+      <div class="m"><div class="l">ROAS (web)</div><div class="v">{{ c.cur.roas|num(2) if c.cur.roas else '–' }}</div>{{ chg(c.chg.roas) }}</div>
+      {% else %}
+      <div class="m"><div class="l">Lead</div><div class="v">{{ c.cur.leads|num }}</div>{{ chg(c.chg.leads) }}</div>
+      <div class="m"><div class="l">Lead başı</div><div class="v">{{ c.cur.cpl|tl }}</div>{{ chg(c.chg.cpl, inverse=True) }}</div>
+      {% endif %}
+      {% endif %}
+      {% if c.has_store %}
+      <div class="m"><div class="l">Bekleyen</div><div class="v">{{ c.pending }}</div>{% if c.pending_old %}<span class="badge down">{{ c.pending_old }} gecikmiş</span>{% endif %}</div>
+      {% endif %}
+    </div>
+    {% if c.has_mp and c.cur.revenue %}
+    {% set w = c.cur.web_share or 0 %}
+    <div class="split"><i style="width:{{ w }}%;background:var(--accent)"></i><i style="width:{{ 100 - w }}%;background:var(--mp)"></i></div>
+    <div class="split-legend"><span>Web {{ c.cur.web_revenue|tl }} · %{{ w|round|int }}</span><span>Pazaryeri {{ c.cur.mp_revenue|tl }} · %{{ (100 - w)|round|int }}</span></div>
+    {% endif %}
+    {% for a in c.alerts[:2] %}<div class="firm-alert {{ a.level }}">{{ a.text }}</div>{% endfor %}
+    {% if not f.integrations %}<div class="firm-alert amber">Henüz bağlantı eklenmedi</div>{% endif %}
+  </a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

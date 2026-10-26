@@ -1,0 +1,16 @@
+# Gizli ayarlar ve veriler — asla GitHub'a gitmemeli
+.env
+data/
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Deneme klasörleri
+deneme/
+demo*/
+ticimax_test_sonuc.json

@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chg, range_chips %}
+{% set active = 'home' %}
+{% block title %}{{ firm.name }} · Panel{% endblock %}
+{% block content %}
+<div class="row between" style="margin-bottom:12px">
+  <div class="row" style="gap:10px">
+    <span class="dot" style="background:{{ firm.color }};width:14px;height:14px"></span>
+    <div>
+      <h1>{{ firm.name }}</h1>
+      <div class="muted small">{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %} · önceki dönemle karşılaştırmalı</div>
+    </div>
+  </div>
+</div>
+{{ range_chips(preset, start, end, '/firma/' ~ firm.id) }}
+
+{% if c.alerts %}<div class="alerts" style="margin-top:14px">{% for a in c.alerts %}<div class="alert {{ a.level }}">{{ a.text }}</div>{% endfor %}</div>{% endif %}
+
+<div class="kpis">
+  {% if c.has_store %}
+  <div class="card kpi"><div class="l">{{ 'Toplam ciro' if c.has_mp else 'Ciro' }}</div><div class="v">{{ c.cur.revenue|tl }}</div>{{ chg(c.chg.revenue) }}</div>
+  {% if c.has_mp %}
+  <div class="card kpi"><div class="l">Web sitesi cirosu</div><div class="v">{{ c.cur.web_revenue|tl }}</div>{{ chg(c.chg.web_revenue) }}
+    <div class="sub">{{ c.cur.web_orders|num }} sipariş · %{{ (c.cur.web_share or 0)|round|int }} pay</div></div>
+  <div class="card kpi"><div class="l">Pazaryeri cirosu</div><div class="v">{{ c.cur.mp_revenue|tl }}</div>{{ chg(c.chg.mp_revenue) }}
+    <div class="sub">{{ c.cur.mp_orders|num }} sipariş</div></div>
+  {% endif %}
+  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ c.cur.orders|num }}</div>{{ chg(c.chg.orders) }}</div>
+  <div class="card kpi"><div class="l">Sepet ortalaması</div><div class="v">{{ c.cur.aov|tl }}</div>{{ chg(c.chg.aov) }}</div>
+  <div class="card kpi"><div class="l">İptal / iade</div><div class="v">{{ c.cur.cancelled|num }}</div></div>
+  {% endif %}
+  {% if c.has_ads %}
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ c.cur.spend|tl }}</div>{{ chg(c.chg.spend, inverse=True) }}</div>
+  {% if c.has_store %}
+  <div class="card kpi"><div class="l">ROAS (web)</div><div class="v">{{ c.cur.roas|num(2) if c.cur.roas else '–' }}</div>{{ chg(c.chg.roas) }}</div>
+  {% endif %}
+  <div class="card kpi"><div class="l">ROAS (platform)</div><div class="v">{{ c.cur.platform_roas|num(2) if c.cur.platform_roas else '–' }}</div></div>
+  {% if c.cur.leads %}<div class="card kpi"><div class="l">Lead · lead başı</div><div class="v">{{ c.cur.leads|num }} · {{ c.cur.cpl|tl }}</div>{{ chg(c.chg.leads) }}</div>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Günlük {% if c.has_store %}ciro ve {% endif %}reklam harcaması</h2>
+  <div class="legend">{% if c.has_store %}<span style="--c:var(--accent)">{{ 'Web sitesi' if c.has_mp else 'Ciro' }}</span>{% if c.has_mp %}<span style="--c:var(--mp)">Pazaryeri</span>{% endif %}{% endif %}{% if c.has_ads %}<span style="--c:#7c3aed">Reklam</span>{% endif %}</div>
+  <div class="chart-box"><canvas id="daily"></canvas></div>
+</div>
+
+{% if chans %}
+<div class="card" style="margin-top:14px">
+  <h2>Satış kanalları</h2>
+  <div class="table-scroll"><table>
+    <tr><th>Kanal</th><th class="r">Sipariş</th><th class="r">Ciro</th><th class="r hide-sm">Sepet ort.</th><th class="r">Pay</th><th class="r">Değişim</th></tr>
+    {% for ch in chans %}
+    <tr><td><span class="ch {{ 'mp' if ch.marketplace }}">{{ ch.channel }}</span></td>
+      <td class="r">{{ ch.orders|num }}</td><td class="r">{{ ch.revenue|tl }}</td><td class="r hide-sm">{{ ch.aov|tl }}</td>
+      <td class="r"><div class="share"><b class="{{ 'mp' if ch.marketplace }}" style="width:{{ (ch.share * 0.6)|round(1) }}px"></b>%{{ ch.share|round|int }}</div></td>
+      <td class="r">{{ chg(ch.chg) }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if c.has_ads %}<p class="muted small" style="margin-bottom:0">ROAS sadece web sitesi cirosu üzerinden hesaplanır; pazaryeri satışları reklam başarısına sayılmaz.</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="two">
+  {% if hourly %}
+  <div class="card">
+    <h2>Bugün saat saat (kümülatif ciro)</h2>
+    <div class="legend"><span style="--c:var(--accent)">Bugün</span><span style="--c:#a1a1aa">Dün</span></div>
+    <div class="chart-box"><canvas id="hourly"></canvas></div>
+  </div>
+  {% endif %}
+  {% if src %}
+  <div class="card">
+    <h2>Reklam kanalları</h2>
+    <table>
+      <tr><th>Kanal</th><th class="r">Harcama</th><th class="r">{{ 'Lead' if not c.has_store else 'ROAS' }}</th></tr>
+      {% for k, v in src.items() %}
+      <tr><td>{{ REGISTRY[k].TITLE }}</td><td class="r">{{ v.spend|tl }}</td>
+        <td class="r">{% if c.has_store %}{{ v.roas|num(2) if v.roas else '–' }}{% else %}{{ v.leads|num }}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">Platform ROAS: reklam ağının kendi raporladığı dönüşüm değeri. ROAS (web): web sitesindeki gerçek ciro ÷ toplam reklam harcaması.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% if c.has_store %}
+<div class="two">
+  <div class="card">
+    <h2>Son siparişler</h2>
+    <div class="table-scroll"><table>
+      <tr><th>No</th><th>Tarih</th><th>Kanal</th><th class="hide-sm">Durum</th><th class="r">Tutar</th></tr>
+      {% for o in recent %}
+      <tr><td>{{ o.number }}</td><td class="muted">{{ o.created_at.strftime('%d.%m %H:%M') }}</td>
+        <td><span class="ch {{ 'mp' if o.channel not in ('Web sitesi', 'Mağaza (POS)') }}">{{ o.channel }}</span></td>
+        <td class="small hide-sm {{ 'muted' if o.is_cancelled }}">{{ o.status }}</td><td class="r">{{ o.total|tl(2) }}</td></tr>
+      {% else %}<tr><td colspan="5" class="muted">Sipariş yok</td></tr>{% endfor %}
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>Bekleyen siparişler ({{ c.pending }})</h2>
+    <div class="table-scroll"><table>
+      <tr><th>No</th><th>Kanal</th><th class="r">Bekleme</th></tr>
+      {% for o in pending %}
+      {% set h = ((now.replace(tzinfo=None) - o.created_at).total_seconds() // 3600)|int %}
+      <tr><td>{{ o.number }}</td><td><span class="ch {{ 'mp' if o.channel not in ('Web sitesi', 'Mağaza (POS)') }}">{{ o.channel }}</span></td>
+        <td class="r {{ 'down' if h >= 48 }}" style="border-radius:6px">{{ h }} saat</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">Bekleyen sipariş yok 🎉</td></tr>{% endfor %}
+    </table></div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:14px">
+  <h2>Bağlantılar</h2>
+  {% for i in firm.integrations %}
+  <div class="integ">
+    <span class="name">{{ REGISTRY[i.kind].TITLE }}</span>
+    <span class="status {{ 'bad' if i.last_ok is false }}">{{ i.last_message or 'Henüz senkronize edilmedi' }} · {{ i.last_sync_at|ago }}</span>
+    <button class="btn sm" onclick="post('/baglanti/{{ i.id }}/senkron', this, 800)">↻ Güncelle</button>
+  </div>
+  {% else %}<p class="muted">Bağlantı yok. <a href="/ayarlar" style="text-decoration:underline">Ayarlar</a>'dan ekleyin.</p>{% endfor %}
+</div>
+
+<script src="/static/chart.umd.min.js"></script>
+<script>
+const S = {{ series|tojson }}, H = {{ hourly|tojson }}, HAS_STORE = {{ c.has_store|tojson }}, HAS_ADS = {{ c.has_ads|tojson }};
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+Chart.defaults.color = css('--ink-3');
+const grid = { color: css('--line') }, acc = css('--accent');
+const money = { callback: v => v >= 1000 ? '₺' + (v/1000).toLocaleString('tr-TR') + 'b' : '₺' + v };
+const tip = { callbacks: { label: c => ' ' + c.dataset.label + ': ' + tl(c.parsed.y || 0) } };
+const ds = [];
+const HAS_MP = {{ c.has_mp|tojson }}, MP = css('--mp');
+if (HAS_STORE) ds.push({ type: 'bar', label: HAS_MP ? 'Web sitesi' : 'Ciro', data: S.web, backgroundColor: acc, yAxisID: 'y', order: 2, stack: 'c' });
+if (HAS_STORE && HAS_MP) ds.push({ type: 'bar', label: 'Pazaryeri', data: S.mp, backgroundColor: MP, yAxisID: 'y', order: 2, stack: 'c' });
+if (HAS_ADS) ds.push({ type: 'line', label: 'Reklam', data: S.spend, borderColor: '#7c3aed', backgroundColor: '#7c3aed',
+  tension: .3, pointRadius: 0, borderWidth: 2, yAxisID: HAS_STORE ? 'y1' : 'y', order: 1 });
+new Chart(document.getElementById('daily'), {
+  data: { labels: S.labels, datasets: ds },
+  options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip },
+    scales: { x: { grid: { display: false }, stacked: true }, y: { grid, ticks: money, beginAtZero: true, stacked: true },
+      y1: { display: HAS_STORE && HAS_ADS, position: 'right', grid: { display: false }, ticks: money, beginAtZero: true } } }
+});
+if (H) new Chart(document.getElementById('hourly'), {
+  type: 'line',
+  data: { labels: H.labels, datasets: [
+    { label: 'Bugün', data: H.today, borderColor: acc, backgroundColor: acc, pointRadius: 0, borderWidth: 2.5, tension: .25 },
+    { label: 'Dün', data: H.yesterday, borderColor: '#a1a1aa', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5, tension: .25 } ] },
+  options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip },
+    scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { grid, ticks: money, beginAtZero: true } } }
+});
+</script>
+{% endblock %}

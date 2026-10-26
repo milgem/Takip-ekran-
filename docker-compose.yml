@@ -1,0 +1,28 @@
+services:
+  panel:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/srv/data          # veritabanı burada, yedeklemeniz gereken tek klasör
+    expose:
+      - "8000"
+
+  caddy:                          # otomatik HTTPS (Let's Encrypt)
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - panel
+
+volumes:
+  caddy_data:
+  caddy_config:

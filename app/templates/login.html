@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Giriş · Panel</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body>
+<div class="login"><div class="card">
+  <div class="brand" style="margin-bottom:20px"><i></i>Panel</div>
+  <form method="post" action="/giris" class="stack">
+    <label>Kullanıcı adı<input name="kullanici" autocomplete="username" required autofocus></label>
+    <label>Şifre<input name="sifre" type="password" autocomplete="current-password" required></label>
+    {% if error %}<div class="alert red">{{ error }}</div>{% endif %}
+    <button class="btn primary" style="justify-content:center">Giriş yap</button>
+  </form>
+</div></div>
+</body>
+</html>
