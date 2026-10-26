@@ -80,11 +80,12 @@ Bağlantıyı ekledikten sonra **Test et**'e basın: son 7 günün siparişleri 
 - **Ticimax'ta pazaryeri siparişleri "Web sitesi" görünüyorsa:** Test mesajındaki "Kanal alanları" kısmında pazaryeri adını taşıyan alanı bulun ve bağlantıdaki **Satış kanalı alanı (gelişmiş)** kutusuna yazın.
 - Düzeltmeden sonra eski siparişlerin de güncellenmesi için bağlantıda **Geçmişi yeniden çek**'e basın.
 
-## Bilgisayarınızda denemek (isteğe bağlı)
+## Kendi bilgisayarında çalıştırmak (Mac)
+
+Terminal'i aç ve şunu yaz:
 
 ```bash
-pip install -r requirements.txt
-export ADMIN_PASSWORD=deneme SECRET_KEY=$(openssl rand -hex 32) DATABASE_URL=sqlite:///./deneme/panel.db COOKIE_SECURE=0 DISABLE_SCHEDULER=1
-python -m app.demo                     # örnek verilerle doldurur
-uvicorn app.main:app --port 8000       # http://localhost:8000
+bash ~/Documents/panel/baslat.command
 ```
+
+İlk seferde gerekenleri kendisi kurar (1–3 dakika), kullanıcı adı ve şifreyi ekrana yazar ve tarayıcıda `http://localhost:8000` adresini açar. Terminal penceresi açık kaldığı sürece panel çalışır ve veriler 30 dakikada bir güncellenir; kapatmak için Ctrl+C. Bu kurulumda panel sadece bu bilgisayardan açılır.

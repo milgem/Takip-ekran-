@@ -38,6 +38,8 @@ def sync_integration(integration_id: int) -> tuple[bool, str]:
                 start = oldest.date()
         try:
             cfg = decrypt(integ.config_enc)
+            if cfg.get("demo"):
+                return True, "Deneme verisi"   # örnek bağlantı: dışarıya istek atılmaz
             validate(integ.kind, cfg)
             result = mod.fetch(cfg, start, end)
         except ConnectorError as e:

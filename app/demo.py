@@ -21,7 +21,7 @@ def run():
             s.add(f)
             s.flush()
             for k in kinds:
-                i = Integration(firm_id=f.id, kind=k, config_enc=encrypt({}), backfilled=True,
+                i = Integration(firm_id=f.id, kind=k, config_enc=encrypt({"demo": True}), backfilled=True,
                                 last_sync_at=datetime.utcnow() - timedelta(minutes=rnd.randint(2, 25)),
                                 last_ok=True, last_message="Deneme verisi")
                 s.add(i)

@@ -14,3 +14,6 @@ venv/
 deneme/
 demo*/
 ticimax_test_sonuc.json
+
+# Yerel kurulum
+.env.local
