@@ -28,7 +28,7 @@ DURUM = {0: "Ön Sipariş", 1: "Onay Bekliyor", 2: "Onaylandı", 3: "Ödeme Bekl
          14: "Teslimat Öncesi İptal Talebi", 15: "İptal Talebi", 16: "Kısmi İade Talebi", 17: "Kısmi İade Yapıldı"}
 PENDING = {1, 2, 4, 5}                    # onaylı ama henüz kargoya verilmemiş
 CANCELLED = {8, 9, 10, 12, 13, 14, 15}    # iptal / iade / silinmiş / iptal talebi
-NOT_A_SALE = {0, 3}                       # ön sipariş / ödeme bekleyen: ciroya katılmaz
+NOT_A_SALE = {3}                          # ödeme bekleyen: ciroya katılmaz (ön sipariş ciroya dahil)
 
 
 def _norm(t: str) -> str:
