@@ -1,0 +1,32 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<div class="card" id="siparisler">
+  <div class="row between" style="margin-bottom:10px">
+    <h2 style="margin:0">Siparişler</h2>
+    <span class="muted small">{{ start.strftime('%d.%m') }}{% if end != start %} – {{ end.strftime('%d.%m') }}{% endif %}{% if orders_capped %} · en yeni {{ orders|length }} sipariş{% endif %}</span>
+  </div>
+  <div class="filters" data-filter-for="order-table">
+    <input type="search" id="order-q" data-f="q" placeholder="Müşteri, sipariş no veya ID ara…" aria-label="Sipariş ara">
+    <select id="order-ch" data-f="ch" aria-label="Kanal"><option value="">Tüm kanallar</option>
+      {% for v in orders|map(attribute='channel')|unique|sort %}<option>{{ v }}</option>{% endfor %}</select>
+    <select id="order-st" data-f="st" aria-label="Sipariş durumu"><option value="">Tüm sipariş durumları</option>
+      {% for v in orders|map(attribute='status')|unique|sort %}{% if v %}<option>{{ v }}</option>{% endif %}{% endfor %}</select>
+    <select id="order-pay" data-f="pay" aria-label="Ödeme durumu"><option value="">Tüm ödeme durumları</option>
+      {% for v in orders|map(attribute='payment_status')|unique|sort %}{% if v %}<option>{{ v }}</option>{% endif %}{% endfor %}</select>
+    <span class="count" data-count></span>
+  </div>
+  <div class="table-scroll tall"><table class="sortable-table" id="order-table">
+    <tr><th>Sipariş ID</th><th>No</th><th>Müşteri</th><th>Tarih</th><th>Kanal</th><th>Sipariş durumu</th><th>Ödeme</th><th class="r">Tutar</th></tr>
+    {% for o in orders %}
+    <tr data-row data-ch="{{ o.channel }}" data-st="{{ o.status }}" data-pay="{{ o.payment_status }}" data-rev="{{ 0 if o.is_cancelled else 1 }}"
+        data-q="{{ o.external_id }} {{ o.number }} {{ o.customer }}">
+      <td class="small muted" data-v="{{ o.external_id }}">{{ o.external_id }}</td><td data-v="{{ o.number }}">{{ o.number }}</td>
+      <td data-v="{{ o.customer }}">{{ o.customer or '—' }}</td>
+      <td class="muted" data-v="{{ o.created_at.timestamp()|int }}">{{ o.created_at.strftime('%d.%m %H:%M') }}</td>
+      <td data-v="{{ o.channel }}"><span class="ch {{ 'mp' if o.channel not in ('Web sitesi', 'Mağaza (POS)') }}">{{ o.channel }}</span></td>
+      <td class="small" data-v="{{ o.status }}">{{ o.status }}</td>
+      <td class="small {{ 'down' if o.is_cancelled }}" data-v="{{ o.payment_status }}">{{ o.payment_status or '—' }}</td>
+      <td class="r {{ 'muted' if o.is_cancelled }}" data-v="{{ o.total }}">{{ o.total|tl(2) }}</td></tr>
+    {% else %}<tr><td colspan="8" class="muted">Bu dönemde sipariş yok</td></tr>{% endfor %}
+  </table></div>
+</div>
+

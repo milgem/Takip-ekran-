@@ -1,0 +1,16 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if src %}<div class="two one" style="margin-top:0">
+  {% if src %}
+  <div class="card">
+    <h2>Reklam kanalları</h2>
+    <table class="sortable-table">
+      <tr><th>Kanal</th><th class="r">Harcama</th><th class="r">{{ 'Lead' if not c.has_store else 'ROAS' }}</th></tr>
+      {% for k, v in src.items() %}
+      <tr><td>{{ REGISTRY[k].TITLE }}</td><td class="r">{{ v.spend|tl }}</td>
+        <td class="r">{% if c.has_store %}{{ v.roas|num(2) if v.roas else '–' }}{% else %}{{ v.leads|num }}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    <p class="muted small">Platform ROAS: reklam ağının kendi raporladığı dönüşüm değeri. ROAS (web): web sitesindeki gerçek ciro ÷ toplam reklam harcaması.</p>
+  </div>
+  {% endif %}
+</div>{% endif %}

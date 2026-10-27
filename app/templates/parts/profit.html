@@ -1,0 +1,52 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% set t = d.tot %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">Ciro</div><div class="v">{{ t.revenue|tl }}</div><div class="sub">{{ t.orders|num }} sipariş</div></div>
+  <div class="card kpi"><div class="l">Pazaryeri komisyonu</div><div class="v">{{ t.commission|tl }}</div></div>
+  <div class="card kpi"><div class="l">Ürün maliyeti</div><div class="v">{{ t.cost|tl if t.cost is not none else '–' }}</div></div>
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ t.ad|tl }}</div></div>
+  <div class="card kpi"><div class="l">Net kâr (tahmini)</div><div class="v {{ 'bad-t' if t.net is not none and t.net < 0 }}">{{ t.net|tl if t.net is not none else '–' }}</div>{% if t.net_margin is not none %}<div class="sub">%{{ t.net_margin|num(1) }} marj</div>{% endif %}</div>
+</div>
+{% if not d.has_cost %}
+<div class="alert amber" style="margin-bottom:14px">Ürün maliyeti verisi gelmiyor, bu yüzden net kâr hesaplanamıyor. Ticimax'ta ürün kartlarındaki alış fiyatı (maliyet), Shopify'da varyantlardaki “Ürün başına maliyet” alanı dolu olmalı. Komisyon ve reklam karşılaştırması yine aşağıda.</div>
+{% endif %}
+<div class="card">
+  <div class="row between" style="margin-bottom:10px"><h2 style="margin:0">Kanal bazında</h2>{{ xlsbtn(xq) }}</div>
+  <div class="table-scroll"><table class="sortable-table">
+    <tr><th>Kanal</th><th class="r">Sipariş</th><th class="r">Ciro</th><th class="r">Komisyon</th><th class="r">Komisyon oranı</th><th class="r">Maliyet</th><th class="r">Reklam</th><th class="r">Net kâr</th><th class="r">Net marj</th><th class="r">Maliyet verisi</th></tr>
+    {% for r in d.rows %}
+    <tr><td data-v="{{ r.channel }}"><span class="ch {{ 'mp' if r.marketplace }}">{{ r.channel }}</span></td>
+      <td class="r" data-v="{{ r.orders }}">{{ r.orders|num }}</td><td class="r" data-v="{{ r.revenue }}">{{ r.revenue|tl }}</td>
+      <td class="r" data-v="{{ r.commission }}">{{ r.commission|tl if r.commission else '–' }}</td>
+      <td class="r" data-v="{{ r.commission_rate }}">{{ ('%' ~ (r.commission_rate|num(1))) if r.commission else '–' }}</td>
+      <td class="r" {% if r.cost is not none %}data-v="{{ r.cost }}"{% endif %}>{{ r.cost|tl if r.cost is not none else '–' }}</td>
+      <td class="r" data-v="{{ r.ad }}">{{ r.ad|tl if r.ad else '–' }}</td>
+      <td class="r {{ 'bad-t' if r.net is not none and r.net < 0 }}" {% if r.net is not none %}data-v="{{ r.net }}"{% endif %}><b>{{ r.net|tl if r.net is not none else '–' }}</b></td>
+      <td class="r" {% if r.net_margin is not none %}data-v="{{ r.net_margin }}"{% endif %}>{% if r.net_margin is not none %}<span class="pill {{ 'bad' if r.net_margin < 5 else ('warn' if r.net_margin < 15 else 'ok') }}">%{{ r.net_margin|num(1) }}</span>{% else %}–{% endif %}</td>
+      <td class="r small muted" data-v="{{ r.coverage }}">%{{ r.coverage|num(0) }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="muted small" style="margin-bottom:0">Net kâr = ciro − pazaryeri komisyonu − ürün maliyeti − reklam. Reklam harcamasının tamamı web sitesine yazılır. Maliyeti bilinmeyen siparişlerde aynı kanalın bilinen maliyet oranı kullanılır (“Maliyet verisi” sütunu cironun yüzde kaçında gerçek maliyet olduğunu gösterir). Kargo ve ödeme komisyonu dahil değildir.</p>
+</div>
+{% if d.products %}
+<div class="card" style="margin-top:14px">
+  <div class="row between" style="margin-bottom:10px"><div><h2 style="margin:0">Ürün kârlılığı</h2><div class="muted small">Maliyeti bilinen ürünler · reklam hariç</div></div></div>
+  <div class="filters" data-filter-for="pp-table">
+    <input type="search" id="pp-q" data-f="q" placeholder="Ürün ara…" aria-label="Ürün ara">
+    <label class="inline small muted"><input type="checkbox" id="pp-m" data-f="m" value="1"> Marjı %15 altı</label>
+    <label class="inline small muted"><input type="checkbox" id="pp-n" data-f="n" value="1"> Sadece zarar edenler</label>
+    <span class="count" data-count></span>
+  </div>
+  <div class="table-scroll tall"><table class="sortable-table" id="pp-table">
+    <tr><th>Ürün</th><th class="r">Adet</th><th class="r">Ciro</th><th class="r">Maliyet</th><th class="r">Komisyon</th><th class="r">Brüt kâr</th><th class="r">Marj</th></tr>
+    {% for p in d.products %}
+    <tr data-row data-q="{{ p.product }}" data-m="{{ 1 if p.margin is not none and p.margin < 15 else 0 }}" data-n="{{ 1 if p.profit < 0 else 0 }}">
+      <td data-v="{{ p.product }}">{{ p.product }}</td><td class="r" data-v="{{ p.qty }}">{{ p.qty|num }}</td>
+      <td class="r" data-v="{{ p.revenue }}">{{ p.revenue|tl }}</td><td class="r" data-v="{{ p.cost }}">{{ p.cost|tl }}</td>
+      <td class="r" data-v="{{ p.commission }}">{{ p.commission|tl if p.commission else '–' }}</td>
+      <td class="r {{ 'bad-t' if p.profit < 0 }}" data-v="{{ p.profit }}"><b>{{ p.profit|tl }}</b></td>
+      <td class="r" {% if p.margin is not none %}data-v="{{ p.margin }}"{% endif %}>{% if p.margin is not none %}<span class="pill {{ 'bad' if p.margin < 5 else ('warn' if p.margin < 15 else 'ok') }}">%{{ p.margin|num(1) }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}

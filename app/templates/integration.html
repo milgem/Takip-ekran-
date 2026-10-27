@@ -4,6 +4,23 @@
 {% block content %}
 <a href="/ayarlar" class="muted small">← Ayarlar</a>
 <h1 style="margin:6px 0 16px">{{ firm.name }} · {{ mod.TITLE }}</h1>
+{% if mesaj %}<div class="alert {{ 'green' if 'bağlandı' in mesaj else 'red' }}" style="max-width:640px;margin-bottom:12px">{{ mesaj }}</div>{% endif %}
+{% if hata == 'eksik' %}<div class="alert red" style="max-width:640px;margin-bottom:12px">Önce mağaza adresini (…myshopify.com), Client ID ve Client Secret'ı girip kaydet.</div>{% endif %}
+{% if kind == 'shopify' and integ %}
+<div class="card" style="max-width:640px;margin-bottom:14px">
+  <h2>Shopify ile bağlan</h2>
+  {% if has_token %}<p class="small" style="margin-top:0"><span class="pill ok">Bağlı</span> Erişim token'ı kayıtlı. İzinleri değiştirdiysen tekrar bağlanabilirsin.</p>{% endif %}
+  <p class="muted small" style="margin-top:0">Client ID ve Client Secret ile otomatik token alınamıyorsa (uygulama ile mağaza farklı Shopify hesaplarındaysa) bu yöntemi kullan.
+    Shopify'da izinleri onaylarsın, panel kalıcı erişim token'ını kendisi kaydeder.</p>
+  <ol class="small" style="margin:0 0 12px;padding-left:18px;line-height:1.6">
+    <li>Dev Dashboard'da uygulamanın sürümünde <b>İzin verilen yönlendirme URL'leri</b> alanına şunu ekle ve sürümü yayınla:<br>
+      <code class="copy">{{ shopify_redirect }}</code></li>
+    <li>Aşağıdaki düğmeye bas; Shopify'da izinleri onayla.</li>
+  </ol>
+  {% if has_client %}<a class="btn primary" href="/shopify/baglan/{{ integ.id }}">Shopify ile bağlan →</a>
+  {% else %}<p class="muted small" style="margin:0">Önce aşağıda Client ID ve Client Secret'ı girip kaydet.</p>{% endif %}
+</div>
+{% endif %}
 <div class="card" style="max-width:640px">
   <form method="post" action="/baglanti" class="stack" autocomplete="off">
     <input type="hidden" name="firm_id" value="{{ firm.id }}">

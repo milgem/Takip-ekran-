@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import chg, range_chips, daypill, xlsbtn, stockcell, help, logo %}
+{% set active = 'home' %}
+{% block title %}{{ firm.name }} · {{ tab_title }} · Panel{% endblock %}
+{% block content %}
+{% set qs = ('bas=' ~ start.isoformat() ~ '&bit=' ~ end.isoformat()) if preset == 'ozel' else ('p=' ~ preset) %}
+<div class="fhead">
+  <details class="fswitch">
+    <summary>{{ logo(firm, 36) }}<span class="fname">{{ firm.name }}</span>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></summary>
+    <div class="fmenu">
+      {% for f in all_firms %}<a href="/firma/{{ f.id }}{{ tab_path }}" class="{{ 'on' if f.id == firm.id }}">{{ logo(f, 28) }}{{ f.name }}</a>{% endfor %}
+      <a href="/" class="fmenu-all">← Tüm firmalar</a>
+    </div>
+  </details>
+</div>
+<nav class="ftabs" aria-label="Bölümler">
+  <a href="/firma/{{ firm.id }}" class="{{ 'on' if tab == 'bugun' }}" {% if tab == 'bugun' %}aria-current="page"{% endif %}>Bugün</a>
+  {% if has_store %}<a href="/firma/{{ firm.id }}/satis?{{ qs }}" class="{{ 'on' if tab == 'satis' }}" {% if tab == 'satis' %}aria-current="page"{% endif %}>Satış</a>
+  <a href="/firma/{{ firm.id }}/urunler" class="{{ 'on' if tab == 'urun' }}" {% if tab == 'urun' %}aria-current="page"{% endif %}>Ürün ve stok</a>{% endif %}
+  {% if has_ads %}<a href="/firma/{{ firm.id }}/reklam?{{ qs }}" class="{{ 'on' if tab == 'reklam' }}" {% if tab == 'reklam' %}aria-current="page"{% endif %}>Reklam</a>{% endif %}
+  <span class="fperiod">{% block period %}{% endblock %}</span>
+</nav>
+{% block firm %}{% endblock %}
+{% endblock %}

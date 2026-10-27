@@ -1,0 +1,16 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if chans %}
+<div class="card">
+  <h2>Satış kanalları</h2>
+  <div class="table-scroll"><table class="sortable-table">
+    <tr><th>Kanal</th><th class="r">Sipariş</th><th class="r">Ciro</th><th class="r hide-sm">Sepet ort.</th><th class="r">Pay</th><th class="r">Değişim</th></tr>
+    {% for ch in chans %}
+    <tr><td><span class="ch {{ 'mp' if ch.marketplace }}">{{ ch.channel }}</span></td>
+      <td class="r">{{ ch.orders|num }}</td><td class="r">{{ ch.revenue|tl }}</td><td class="r hide-sm">{{ ch.aov|tl }}</td>
+      <td class="r" data-v="{{ ch.share }}"><div class="share"><b class="{{ 'mp' if ch.marketplace }}" style="width:{{ (ch.share * 0.6)|round(1) }}px"></b>%{{ ch.share|round|int }}</div></td>
+      <td class="r" data-v="{{ ch.chg if ch.chg is not none else '' }}">{{ chg(ch.chg) }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% if c.has_ads %}<p class="muted small" style="margin-bottom:0">ROAS sadece web sitesi cirosu üzerinden hesaplanır; pazaryeri satışları reklam başarısına sayılmaz.</p>{% endif %}
+</div>
+{% endif %}

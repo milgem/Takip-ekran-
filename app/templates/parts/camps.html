@@ -1,0 +1,48 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if camps %}
+{% set has_conv = camps|selectattr('conversions')|list|length > 0 %}
+{% set has_leads = camps|selectattr('leads')|list|length > 0 %}
+{% set srcs = camps|map(attribute='source')|unique|list %}
+<div class="card" style="margin-top:14px" id="kampanyalar">
+  <div class="row between" style="margin-bottom:10px">
+    <h2 style="margin:0">Kampanyalar</h2>
+    <div class="row" style="gap:8px">
+      {% if srcs|length > 1 %}
+      <div class="chips" role="group" aria-label="Platform">
+        <a href="#kampanyalar" class="on" data-camp-filter="">Tümü</a>
+        {% for k in srcs %}<a href="#kampanyalar" data-camp-filter="{{ k }}">{{ REGISTRY[k].TITLE }}</a>{% endfor %}
+      </div>
+      {% endif %}
+      <label class="inline small muted"><input type="checkbox" id="camp-active"> Sadece aktif</label>
+    </div>
+  </div>
+  <div class="filters" data-filter-for="camp-table">
+    <input type="search" id="camp-q" data-f="q" placeholder="Kampanya ara…" aria-label="Kampanya ara">
+    <span class="count" data-count></span>
+  </div>
+  <div class="table-scroll tall"><table class="camps sortable-table" id="camp-table">
+    <tr><th>Kampanya</th><th class="r">Harcama</th><th class="r">Gösterim</th><th class="r">Tıklama</th>
+      <th class="r">TO</th><th class="r">TBM</th>
+      {% if has_conv %}<th class="r">Dönüşüm</th><th class="r">Dönüşüm değeri</th><th class="r">ROAS</th><th class="r">Dönüşüm başı</th>{% endif %}
+      {% if has_leads %}<th class="r">Lead</th><th class="r">Lead başı</th>{% endif %}</tr>
+    {% for k in camps %}
+    <tr data-row data-src="{{ k.source }}" data-active="{{ 1 if k.status == 'Aktif' else 0 }}" data-q="{{ k.name }}">
+      <td class="camp-name" data-v="{{ k.name }}"><div class="nm" title="{{ k.name }}">{{ k.name }}</div>
+        <div class="small muted"><span class="tag">{{ REGISTRY[k.source].TITLE }}</span>
+          {% if k.status %}<span class="st {{ 'on' if k.status == 'Aktif' else '' }}">{{ k.status }}</span>{% endif %}
+          · %{{ k.share|round|int }} pay</div></td>
+      <td class="r" data-v="{{ k.spend }}"><b>{{ k.spend|tl }}</b><div>{{ chg(k.chg, inverse=True) }}</div></td>
+      <td class="r">{{ k.impressions|num }}</td><td class="r">{{ k.clicks|num }}</td>
+      <td class="r" {% if k.ctr is not none %}data-v="{{ k.ctr }}"{% endif %}>{{ ('%' ~ (k.ctr|num(2))) if k.ctr is not none else '–' }}</td>
+      <td class="r" {% if k.cpc %}data-v="{{ k.cpc }}"{% endif %}>{{ k.cpc|tl(2) if k.cpc else '–' }}</td>
+      {% if has_conv %}<td class="r">{{ k.conversions|num(1) if k.conversions else '–' }}</td>
+      <td class="r">{{ k.value|tl if k.value else '–' }}</td>
+      <td class="r {{ 'down' if k.roas is not none and k.roas < firm.roas_alert else '' }}" {% if k.roas %}data-v="{{ k.roas }}"{% endif %}>{{ k.roas|num(2) if k.roas else '–' }}</td>
+      <td class="r">{{ k.cpa|tl if k.cpa else '–' }}</td>{% endif %}
+      {% if has_leads %}<td class="r">{{ k.leads|num if k.leads else '–' }}</td><td class="r">{{ k.cpl|tl if k.cpl else '–' }}</td>{% endif %}
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="muted small" style="margin-bottom:0">Dönüşüm, dönüşüm değeri ve ROAS reklam platformunun kendi raporladığı değerlerdir. TO: tıklama oranı, TBM: tıklama başı maliyet. Harcama değişimi önceki aynı uzunluktaki döneme göredir.</p>
+</div>
+{% endif %}

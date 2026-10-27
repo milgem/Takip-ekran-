@@ -1,0 +1,40 @@
+{% extends "_firmbase.html" %}
+{% block period %}{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %}{% endblock %}
+{% block firm %}
+{% set cur = c.cur %}
+<div class="toolbar">
+  <nav class="seg" aria-label="Reklam">
+    <a href="?v=kampanya&{{ qs }}" class="{{ 'on' if v == 'kampanya' }}">Reklam kampanyaları</a>
+    {% if has_store %}<a href="?v=site&{{ qs }}" class="{{ 'on' if v == 'site' }}">Site kampanyaları</a>{% endif %}
+  </nav>
+  {{ range_chips(preset, start, end, '/firma/' ~ firm.id ~ '/reklam', '&v=' ~ v) }}
+</div>
+{% if v == 'kampanya' %}
+<section class="kpis k4">
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ cur.spend|tl }}</div><div class="sub">{{ chg(c.chg.spend, inverse=True) }}</div></div>
+  {% if has_store %}
+  <div class="card kpi"><div class="l">ROAS (web) {{ help('Web sitesindeki gerçek ciro ÷ toplam reklam harcaması. Pazaryeri satışları dahil değil.') }}</div><div class="v">{{ cur.roas|num(2) if cur.roas else '–' }}</div><div class="sub">{{ chg(c.chg.roas) }}</div></div>
+  <div class="card kpi"><div class="l">ROAS (platform) {{ help('Reklam ağının kendi raporladığı dönüşüm değeri ÷ harcama.') }}</div><div class="v">{{ cur.platform_roas|num(2) if cur.platform_roas else '–' }}</div></div>
+  {% else %}
+  <div class="card kpi"><div class="l">Lead</div><div class="v">{{ cur.leads|num }}</div><div class="sub">{{ chg(c.chg.leads) }}</div></div>
+  <div class="card kpi"><div class="l">Lead başı</div><div class="v">{{ cur.cpl|tl if cur.cpl else '–' }}</div></div>
+  {% endif %}
+  <div class="card kpi"><div class="l">Tıklama başı</div><div class="v">{{ cur.cpc|tl(2) if cur.cpc else '–' }}</div><div class="sub">{{ cur.clicks|num }} tıklama</div></div>
+</section>
+{% include "parts/adsrc.html" %}
+{% include "parts/camps.html" %}
+{% if not camps %}<div class="card empty"><p>Bu dönemde kampanya verisi yok.</p></div>{% endif %}
+<script>
+(function () {
+  var box = document.getElementById('kampanyalar');
+  if (!box) return;
+  var src = '', onlyActive = document.getElementById('camp-active');
+  function apply() { box.querySelectorAll('tr[data-src]').forEach(function (tr) { tr.hidden = (src && tr.dataset.src !== src) || (onlyActive.checked && tr.dataset.active !== '1'); }); }
+  box.querySelectorAll('[data-camp-filter]').forEach(function (a) { a.addEventListener('click', function (e) { e.preventDefault(); src = a.dataset.campFilter; box.querySelectorAll('[data-camp-filter]').forEach(function (b) { b.classList.toggle('on', b === a); }); apply(); }); });
+  onlyActive.addEventListener('change', apply);
+})();
+</script>
+{% else %}
+{% if a.has_items %}{% include "_groups.html" %}{% else %}<div class="card empty"><p>Bu dönemde satış yok.</p></div>{% endif %}
+{% endif %}
+{% endblock %}

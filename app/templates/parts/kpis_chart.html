@@ -1,0 +1,29 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<div class="kpis">
+  {% if c.has_store %}
+  <div class="card kpi"><div class="l">{{ 'Toplam ciro' if c.has_mp else 'Ciro' }}</div><div class="v">{{ c.cur.revenue|tl }}</div>{{ chg(c.chg.revenue) }}</div>
+  {% if c.has_mp %}
+  <div class="card kpi"><div class="l">Web sitesi cirosu</div><div class="v">{{ c.cur.web_revenue|tl }}</div>{{ chg(c.chg.web_revenue) }}
+    <div class="sub">{{ c.cur.web_orders|num }} sipariş · %{{ (c.cur.web_share or 0)|round|int }} pay</div></div>
+  <div class="card kpi"><div class="l">Pazaryeri cirosu</div><div class="v">{{ c.cur.mp_revenue|tl }}</div>{{ chg(c.chg.mp_revenue) }}
+    <div class="sub">{{ c.cur.mp_orders|num }} sipariş</div></div>
+  {% endif %}
+  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ c.cur.orders|num }}</div>{{ chg(c.chg.orders) }}</div>
+  <div class="card kpi"><div class="l">Sepet ortalaması</div><div class="v">{{ c.cur.aov|tl }}</div>{{ chg(c.chg.aov) }}</div>
+  <a class="card kpi" href="#odemesiz"><div class="l">Ciro dışı sipariş</div><div class="v">{{ c.cur.cancelled|num }}</div><div class="sub">ödemesiz / iptal</div></a>
+  {% endif %}
+  {% if c.has_ads %}
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ c.cur.spend|tl }}</div>{{ chg(c.chg.spend, inverse=True) }}</div>
+  {% if c.has_store %}
+  <div class="card kpi"><div class="l">ROAS (web)</div><div class="v">{{ c.cur.roas|num(2) if c.cur.roas else '–' }}</div>{{ chg(c.chg.roas) }}</div>
+  {% endif %}
+  <div class="card kpi"><div class="l">ROAS (platform)</div><div class="v">{{ c.cur.platform_roas|num(2) if c.cur.platform_roas else '–' }}</div></div>
+  {% if c.cur.leads %}<div class="card kpi"><div class="l">Lead · lead başı</div><div class="v">{{ c.cur.leads|num }} · {{ c.cur.cpl|tl }}</div>{{ chg(c.chg.leads) }}</div>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Günlük {% if c.has_store %}ciro ve {% endif %}reklam harcaması</h2>
+  <div class="legend">{% if c.has_store %}<span style="--c:var(--accent)">{{ 'Web sitesi' if c.has_mp else 'Ciro' }}</span>{% if c.has_mp %}<span style="--c:var(--mp)">Pazaryeri</span>{% endif %}{% endif %}{% if c.has_ads %}<span style="--c:#7c3aed">Reklam</span>{% endif %}</div>
+  <div class="chart-box"><canvas id="daily"></canvas></div>
+</div>

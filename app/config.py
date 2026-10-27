@@ -15,6 +15,7 @@ TIMEZONE = ZoneInfo(_env("TIMEZONE", "Europe/Istanbul"))
 SYNC_MINUTES = int(_env("SYNC_MINUTES", "30"))   # kaç dakikada bir veri çekilsin
 BACKFILL_DAYS = int(_env("BACKFILL_DAYS", "60")) # ilk bağlantıda kaç günlük geçmiş
 RECENT_DAYS = int(_env("RECENT_DAYS", "3"))      # her senkronda yeniden çekilen son günler
+BACKFILL_CHUNK_DAYS = int(_env("BACKFILL_CHUNK_DAYS", "3"))  # ilk senkronda kaç günlük parçalarla çekilsin
 STOCK_HOURS = float(_env("STOCK_HOURS", "2"))    # stoklar en fazla bu sıklıkla yenilenir (saat)
 COOKIE_SECURE = _env("COOKIE_SECURE", "1") == "1"
 

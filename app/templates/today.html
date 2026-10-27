@@ -1,0 +1,73 @@
+{% extends "_firmbase.html" %}
+{% block period %}Bugün {{ now.strftime('%H:%M') }} itibarıyla · dünün aynı saatiyle{% endblock %}
+{% block firm %}
+{% set cur = c.cur %}
+<h1 class="lead">{{ headline }}</h1>
+
+<section class="kpis k4">
+  {% if has_store %}
+  <div class="card kpi"><div class="l">Ciro</div><div class="v">{{ cur.revenue|tl }}</div>
+    <div class="sub">{{ chg(c.chg.revenue) }} dün bu saat {{ c.prev.revenue|tl }}</div></div>
+  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ cur.orders|num }}</div>
+    <div class="sub">{% for ch in chans[:3] %}{{ ch.channel }} {{ ch.orders }}{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+  {% if unpaid_today and (unpaid_today.count or unpaid_today.paid) and unpaid_30.rate is not none %}
+  <div class="card kpi"><div class="l">Ödeme başarısı</div>
+    <div class="v {{ 'bad-t' if unpaid_today.rate is not none and unpaid_today.rate < 50 }}">{{ ('%' ~ (unpaid_today.rate|num(0))) if unpaid_today.rate is not none else '–' }}</div>
+    <div class="sub">{{ unpaid_today.count|num }} deneme yarıda kaldı · 30 gün ort. %{{ unpaid_30.rate|num(0) }}</div></div>
+  {% elif has_ads %}
+  <div class="card kpi"><div class="l">ROAS (web)</div><div class="v">{{ cur.roas|num(2) if cur.roas else '–' }}</div><div class="sub">reklam {{ cur.spend|tl }}</div></div>
+  {% else %}
+  <div class="card kpi"><div class="l">Bekleyen sipariş</div><div class="v">{{ c.pending|num }}</div><div class="sub">{{ c.pending_old }} tanesi 48 saati geçti</div></div>
+  {% endif %}
+  <div class="card kpi"><div class="l">Sepet ortalaması</div><div class="v">{{ cur.aov|tl }}</div><div class="sub">{{ chg(c.chg.aov) }} dün {{ c.prev.aov|tl }}</div></div>
+  {% else %}
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ cur.spend|tl }}</div><div class="sub">{{ chg(c.chg.spend, inverse=True) }}</div></div>
+  <div class="card kpi"><div class="l">Lead</div><div class="v">{{ cur.leads|num }}</div><div class="sub">{{ chg(c.chg.leads) }}</div></div>
+  <div class="card kpi"><div class="l">Lead başı</div><div class="v">{{ cur.cpl|tl if cur.cpl else '–' }}</div></div>
+  <div class="card kpi"><div class="l">Tıklama</div><div class="v">{{ cur.clicks|num }}</div></div>
+  {% endif %}
+</section>
+
+<section class="split2">
+  <div class="main-col">
+    <div class="sec-head"><h2>Bugün ilgilenmen gerekenler</h2><span class="muted small">{{ actions|length }} iş</span></div>
+    {% for a in actions %}
+    <div class="todo {{ a.level }}">
+      <span class="todo-ic" aria-hidden="true">
+        {% if a.icon == 'card' %}<svg viewBox="0 0 24 24" width="18" height="18"><rect x="3" y="6" width="18" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.8"/></svg>
+        {% elif a.icon == 'box' %}<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        {% elif a.icon == 'ad' %}<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 10v4h3l6 4V6L7 10z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M17 9a4 4 0 0 1 0 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        {% elif a.icon == 'truck' %}<svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7" cy="17.5" r="1.6" fill="currentColor"/><circle cx="17" cy="17.5" r="1.6" fill="currentColor"/></svg>
+        {% elif a.icon == 'plug' %}<svg viewBox="0 0 24 24" width="18" height="18"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        {% else %}<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 19V5M4 19h16M8 15l4-4 3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>{% endif %}
+      </span>
+      <div class="todo-body"><div class="todo-t">{{ a.title }}</div>{% if a.detail %}<div class="todo-d">{{ a.detail }}</div>{% endif %}</div>
+      <a class="btn {{ 'dark' if a.level == 'red' else '' }}" href="{{ a.href }}">{{ a.label }}</a>
+    </div>
+    {% else %}
+    <div class="card"><p style="margin:0">Bugün dikkat isteyen bir şey yok. {% if has_store %}<a class="link" href="/firma/{{ firm.id }}/satis">Satışa göz at →</a>{% endif %}</p></div>
+    {% endfor %}
+    {% for gd in good %}<div class="alert green">{{ gd.text }}</div>{% endfor %}
+  </div>
+
+  <aside class="side-col">
+    <div class="card ai-card" id="ai-yorum">
+      <div class="sec-head"><h2 class="ai-h"><span class="ai-dot" aria-hidden="true"></span>Yapay zekâ yorumu</h2>
+        <span class="row" style="gap:6px">{% if ai_note %}<span class="muted small">{{ ai_note.created_at|ago }}</span>{% endif %}
+        {% if ai_ready %}<button class="btn sm" onclick="post('/firma/{{ firm.id }}/ai', this, 600)">{{ 'Yenile' if ai_note else 'Yaz' }}</button>{% endif %}</span></div>
+      {% if ai_note %}<ul class="ai-list">{% for ln in ai_note.text|ai_lines %}<li>{{ ln }}</li>{% endfor %}</ul>
+      {% elif ai_ready %}<p class="muted small" style="margin:0">Her sabah otomatik yazılır; şimdi görmek için “Yaz”a bas.</p>
+      {% else %}<p class="muted small" style="margin:0">Kapalı. <a class="link" href="/ayarlar#yapay-zeka">Ayarlar</a>'dan açabilirsin.</p>{% endif %}
+    </div>
+    <div class="card">
+      <div class="sec-head"><h2>Son 14 gün</h2><span class="muted small">{{ 'ciro' if has_store else 'reklam harcaması' }}</span></div>
+      {% set vals = series.revenue if has_store else series.spend %}
+      {% set mx = (vals|max) or 1 %}
+      <div class="bars" role="img" aria-label="Son 14 günün {{ 'cirosu' if has_store else 'reklam harcaması' }}">
+        {% for v in vals %}<i style="height:{{ (v / mx * 100)|round(1) }}%" class="{{ 'today' if loop.last }}" title="{{ series.labels[loop.index0] }} · {{ v|tl }}"></i>{% endfor %}
+      </div>
+      <div class="bars-x"><span>{{ series.labels[0] }}</span><span>Bugün</span></div>
+    </div>
+  </aside>
+</section>
+{% endblock %}

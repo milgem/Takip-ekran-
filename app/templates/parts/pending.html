@@ -1,0 +1,14 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<div class="card" style="margin-top:14px">
+  <h2>Bekleyen siparişler ({{ c.pending }})</h2>
+  <div class="table-scroll tall"><table class="sortable-table">
+    <tr><th>Sipariş ID</th><th>No</th><th>Müşteri</th><th>Kanal</th><th class="r">Tutar</th><th class="r">Bekleme</th></tr>
+    {% for o in pending %}
+    {% set h = ((now.replace(tzinfo=None) - o.created_at).total_seconds() // 3600)|int %}
+    <tr><td class="small muted">{{ o.external_id }}</td><td>{{ o.number }}</td><td data-v="{{ o.customer }}">{{ o.customer or '—' }}</td>
+      <td data-v="{{ o.channel }}"><span class="ch {{ 'mp' if o.channel not in ('Web sitesi', 'Mağaza (POS)') }}">{{ o.channel }}</span></td>
+      <td class="r" data-v="{{ o.total }}">{{ o.total|tl(2) }}</td>
+      <td class="r {{ 'down' if h >= 48 }}" data-v="{{ h }}" style="border-radius:6px">{{ h }} saat</td></tr>
+    {% else %}<tr><td colspan="6" class="muted">Bekleyen sipariş yok 🎉</td></tr>{% endfor %}
+  </table></div>
+</div>

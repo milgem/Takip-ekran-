@@ -1,0 +1,95 @@
+{% macro daycell(d, stock) -%}
+{%- if stock is none -%}<td class="r muted">–</td>
+{%- elif stock <= 0 -%}<td class="r" data-v="0"><span class="pill bad">0 gün</span></td>
+{%- elif d is none -%}<td class="r muted">–</td>
+{%- else -%}<td class="r" data-v="{{ d }}"><span class="pill {{ 'bad' if d < 4 else ('warn' if d < 14 else 'ok') }}">{{ (d|round(0, 'floor')|int) if d >= 1 else '<1' }} gün</span></td>{%- endif -%}
+{%- endmacro %}
+
+{% if g in ('marka', 'kategori') %}
+{% set rows = a.brands if g == 'marka' else a.categories %}
+{% set label = 'Marka' if g == 'marka' else 'Kategori' %}
+{% set missing = rows|selectattr('missing')|list %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">{{ label }} sayısı</div><div class="v">{{ (rows|length - missing|length)|num }}</div></div>
+  <div class="card kpi"><div class="l">Satılan adet</div><div class="v">{{ a.qty|num }}</div></div>
+  <div class="card kpi"><div class="l">Ürün cirosu</div><div class="v">{{ a.revenue|tl }}</div></div>
+  {% if rows %}<div class="card kpi"><div class="l">En çok satan {{ label|lower }}</div><div class="v" style="font-size:17px">{{ rows[0].name }}</div><div class="sub">%{{ rows[0].share|num(1) }} ciro payı</div></div>{% endif %}
+</div>
+{% if missing and missing[0].share > 20 %}
+<div class="alert amber" style="margin-bottom:14px">Cironun %{{ missing[0].share|num(0) }}'inde {{ label|lower }} bilgisi yok. {{ label }} bilgisi ürün kartından (stok senkronu) geliyor; ilk stok senkronizasyonu tamamlanınca dolacak.</div>
+{% endif %}
+<div class="card">
+  <div class="row between" style="margin-bottom:10px">
+    <div><h2 style="margin:0">{{ label }} bazında satışlar</h2><div class="muted small">{{ label }}ya tıklayınca en çok satan ürünleri açılır</div></div>
+  </div>
+  <div class="filters" data-filter-for="grp-table">
+    <input type="search" id="grp-q" data-f="q" placeholder="{{ label }} veya ürün ara…" aria-label="{{ label }} ara">
+    <span class="count" data-count></span>
+  </div>
+  <div class="table-scroll tall"><table class="sortable-table expandable" id="grp-table">
+    <tr><th class="r">#</th><th>{{ label }}</th><th class="r">Adet</th><th class="r">Ciro</th><th class="r">Pay</th><th class="r">Sipariş</th><th class="r">Ürün</th>
+      {% if a.has_stock %}<th class="r">Stok</th><th class="r">Stok kaç gün yeter</th><th class="r">Tükenen beden</th>{% endif %}</tr>
+    {% for x in rows %}
+    <tr data-row class="parent" tabindex="0" aria-expanded="false" aria-controls="gd-{{ loop.index }}" data-q="{{ x.name }} {% for p in x.products %}{{ p.product }} {% endfor %}">
+      <td class="r muted" data-v="{{ loop.index }}"><span class="chev" aria-hidden="true">›</span>{{ loop.index }}</td>
+      <td data-v="{{ x.name }}"><b class="{{ 'muted' if x.missing }}">{{ x.name }}</b></td>
+      <td class="r" data-v="{{ x.qty }}"><b>{{ x.qty|num }}</b></td><td class="r" data-v="{{ x.revenue }}">{{ x.revenue|tl }}</td>
+      <td class="r" data-v="{{ x.share }}"><div class="share"><b style="width:{{ (x.share * 0.6)|round(1) }}px"></b>%{{ x.share|num(1) }}</div></td>
+      <td class="r" data-v="{{ x.orders }}">{{ x.orders|num }}</td><td class="r" data-v="{{ x.product_count }}">{{ x.product_count }}</td>
+      {% if a.has_stock %}<td class="r" {% if x.stock is not none %}data-v="{{ x.stock }}"{% endif %}>{{ x.stock|num if x.stock is not none else '–' }}</td>
+      {{ daycell(x.days_left, x.stock) }}
+      <td class="r" data-v="{{ x.out }}">{% if x.sizes %}{% if x.out %}<span class="pill bad">{{ x.out }} / {{ x.sizes }}</span>{% else %}<span class="muted">0 / {{ x.sizes }}</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>{% endif %}
+    </tr>
+    <tr class="detail" id="gd-{{ loop.index }}" hidden><td colspan="{{ 10 if a.has_stock else 7 }}">
+      <table class="sub">
+        <tr><th>Ürün</th><th class="r">Adet</th><th class="r">Ciro</th><th class="r">Sipariş</th>{% if a.has_stock %}<th class="r">Stok</th><th class="r">Kaç gün yeter</th><th class="r">Tükenen beden</th>{% endif %}</tr>
+        {% for p in x.products %}
+        <tr><td>{{ p.product }}</td><td class="r">{{ p.qty|num }}</td><td class="r">{{ p.revenue|tl }}</td><td class="r">{{ p.orders|num }}</td>
+          {% if a.has_stock %}<td class="r">{% if p.stock is none %}–{% elif p.stock <= 0 %}<span class="pill bad">Tükendi</span>{% else %}{{ p.stock|num }}{% endif %}</td>
+          {{ daycell(p.days_left, p.stock) }}
+          <td class="r">{% if p.out_count %}<span class="pill bad" title="{{ p.out_names|join(', ') }}">{{ p.out_count }} / {{ p.size_count }}</span>{% elif p.size_count %}<span class="muted">0 / {{ p.size_count }}</span>{% else %}–{% endif %}</td>{% endif %}</tr>
+        {% endfor %}
+        {% if x.product_count > x.products|length %}<tr class="zero"><td colspan="7">+{{ x.product_count - x.products|length }} ürün daha</td></tr>{% endif %}
+      </table>
+    </td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+
+{% elif g == 'kampanya' %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">Kampanyalı satış</div><div class="v">{{ a.campaign_revenue|tl }}</div><div class="sub">ürün cirosunun %{{ ((a.campaign_revenue / a.revenue * 100) if a.revenue else 0)|num(1) }}'i</div></div>
+  <div class="card kpi"><div class="l">Verilen indirim</div><div class="v">{{ a.campaign_discount|tl }}</div></div>
+  <div class="card kpi"><div class="l">Kampanya sayısı</div><div class="v">{{ a.campaigns|length }}</div><div class="sub">{{ a.campaigns|selectattr('active_recently')|list|length }} tanesi son 2 günde satış yaptı</div></div>
+</div>
+<div class="card">
+  <div class="row between" style="margin-bottom:10px">
+    <div><h2 style="margin:0">Site kampanyaları ve indirimler</h2><div class="muted small">Sipariş satırlarındaki kampanya / indirim koduna göre · kampanyaya tıklayınca ürünleri açılır</div></div>
+  </div>
+  {% if a.campaigns %}
+  <div class="table-scroll tall"><table class="sortable-table expandable">
+    <tr><th>Kampanya</th><th class="r">Durum</th><th class="r">Sipariş</th><th class="r">Adet</th><th class="r">Ciro</th><th class="r">İndirim</th><th class="r">İndirim oranı</th><th class="r">Sepet ort.</th><th class="r">Son satış</th></tr>
+    {% for c in a.campaigns %}
+    <tr class="parent" tabindex="0" aria-expanded="false" aria-controls="cd-{{ loop.index }}">
+      <td data-v="{{ c.name }}"><span class="chev" aria-hidden="true">›</span><b>{{ c.name }}</b></td>
+      <td class="r" data-v="{{ 1 if c.active_recently else 0 }}">{% if c.active_recently %}<span class="pill ok">Satış yapıyor</span>{% else %}<span class="muted small">Son satış {{ c.last.strftime('%d.%m') }}</span>{% endif %}</td>
+      <td class="r" data-v="{{ c.orders }}">{{ c.orders|num }}</td><td class="r" data-v="{{ c.qty }}">{{ c.qty|num }}</td>
+      <td class="r" data-v="{{ c.revenue }}"><b>{{ c.revenue|tl }}</b></td><td class="r" data-v="{{ c.discount }}">{{ c.discount|tl if c.discount else '–' }}</td>
+      <td class="r" data-v="{{ c.discount_rate }}">{{ ('%' ~ (c.discount_rate|num(1))) if c.discount else '–' }}</td>
+      <td class="r" data-v="{{ c.aov }}">{{ c.aov|tl }}</td>
+      <td class="r muted" data-v="{{ c.last.timestamp()|int }}">{{ c.last.strftime('%d.%m %H:%M') }}</td>
+    </tr>
+    <tr class="detail" id="cd-{{ loop.index }}" hidden><td colspan="9">
+      <table class="sub"><tr><th>Ürün</th><th class="r">Adet</th><th class="r">Ciro</th></tr>
+        {% for p in c.products %}<tr><td>{{ p.product }}</td><td class="r">{{ p.qty|num }}</td><td class="r">{{ p.revenue|tl }}</td></tr>{% endfor %}
+        {% if c.product_count > c.products|length %}<tr class="zero"><td colspan="3">+{{ c.product_count - c.products|length }} ürün daha</td></tr>{% endif %}
+      </table>
+    </td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="muted small" style="margin-bottom:0">Ticimax kampanya adlarını sipariş servisinde göndermediği için kampanyalar numarasıyla görünür (Ticimax'ta Kampanyalar ekranındaki numara). Shopify'da indirim kodu ya da otomatik indirim adı görünür.</p>
+  {% else %}
+  <p class="muted" style="margin:0">Bu dönemde kampanyalı ya da indirimli satış bulunamadı. Kampanya bilgisi sipariş satırlarından geliyor; panel güncellendikten sonraki ilk senkronizasyonda geçmiş siparişler için de dolacak.</p>
+  {% endif %}
+</div>
+{% endif %}

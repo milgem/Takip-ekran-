@@ -1,0 +1,27 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if has_mp %}
+<div class="chips" style="margin-bottom:12px" aria-label="Satış kanalı">
+  <a href="?v=saat&{{ qs }}" class="{{ 'on' if k not in ('web', 'mp') }}">Tüm kanallar</a>
+  <a href="?v=saat&{{ qs }}&k=web" class="{{ 'on' if k == 'web' }}">Web sitesi</a>
+  <a href="?v=saat&{{ qs }}&k=mp" class="{{ 'on' if k == 'mp' }}">Pazaryerleri</a>
+</div>
+{% endif %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">En güçlü gün</div><div class="v" style="font-size:19px">{{ d.best_day or '–' }}</div></div>
+  <div class="card kpi"><div class="l">En zayıf gün</div><div class="v" style="font-size:19px">{{ d.worst_day or '–' }}</div></div>
+  <div class="card kpi"><div class="l">En yoğun saatler</div><div class="v" style="font-size:16px">{% for b in d.best[:3] %}{{ b.day[:3] }} {{ '%02d'|format(b.hour) }}:00{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+  <div class="card kpi"><div class="l">Sessiz saatler</div><div class="v" style="font-size:16px">{% if d.quiet_hours %}{{ '%02d'|format(d.quiet_hours[0]) }}:00 – {{ '%02d'|format((d.quiet_hours[-1] + 1) % 24) }}:00{% else %}–{% endif %}</div><div class="sub">reklamı kısmak için aday</div></div>
+</div>
+<div class="card">
+  <h2>Ortalama saatlik ciro (gün × saat)</h2>
+  <div class="table-scroll"><table class="heat">
+    <tr><th></th>{% for h in range(24) %}<th>{{ '%02d'|format(h) }}</th>{% endfor %}<th class="r">Günlük ort.</th></tr>
+    {% for w in range(7) %}
+    <tr><th class="dname">{{ d.days[w] }}</th>
+      {% for h in range(24) %}{% set c = d.cells[w][h] %}
+      <td style="--l:{{ '%.3f'|format(c.lvl) }}" title="{{ d.days[w] }} {{ '%02d'|format(h) }}:00 · ort. {{ c.rev|tl }} · {{ c.cnt|num(1) }} sipariş"></td>{% endfor %}
+      <td class="r small">{{ d.by_day[w]|tl }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <div class="heat-legend"><span>Az</span><i></i><span>Çok</span><span class="muted small" style="margin-left:auto">Hücrenin üstüne gelince ortalama ciro ve sipariş sayısı görünür · {{ d.total_orders|num }} sipariş</span></div>
+</div>

@@ -26,7 +26,12 @@ def _catalog(rnd, kind):
             mid = (len(sizes) - 1) / 2
             weight = pop * (1.6 - abs(si - mid) / max(mid, 1) * .9)
             stock = 0 if rnd.random() < .18 else int(rnd.choice([2, 4, 8, 15, 40, 90]))
-            out.append({"pid": f"P{pi}", "vid": f"P{pi}-{si}", "name": name, "size": sz, "price": price,
+            brand = ["Örnek Marka A", "Örnek Marka B", "Örnek Marka C"][pi % 3]
+            cat = {"Ayakkabı": "İş Ayakkabısı", "Eldiveni": "İş Eldiveni", "Gözlük": "Göz Koruma", "Maske": "Solunum Koruma",
+                   "Montu": "İş Elbisesi", "Gömlek": "Gömlek", "Jean": "Pantolon", "Kazak": "Triko", "Ceket": "Dış Giyim",
+                   "Tişört": "Tişört"}
+            category = next((v for k2, v in cat.items() if k2 in name), "Diğer")
+            out.append({"pid": f"P{pi}", "vid": f"P{pi}-{si}", "name": name, "size": sz, "price": price, "brand": brand, "category": category,
                         "sku": f"{name.split()[1][:3].upper()}-{sz}".replace(" ", ""), "w": weight, "stock": stock})
     return out
 
@@ -53,7 +58,7 @@ def run():
                 for v in cat:
                     s.add(VariantStock(firm_id=f.id, integration_id=i.id, product_id=v["pid"], variant_id=v["vid"],
                                        product_name=v["name"], variant=v["size"], sku=v["sku"], barcode="",
-                                       stock=v["stock"], price=v["price"], active=True))
+                                       stock=v["stock"], price=v["price"], active=True, brand=v["brand"], category=v["category"]))
                 if cat:
                     i.stock_synced_at, i.stock_message = datetime.utcnow(), f"{len(cat)} varyasyon stoğu güncellendi"
                 for d in range(60, -1, -1):
@@ -82,8 +87,11 @@ def run():
                             for v in picks:
                                 q = rnd.choice([1, 1, 1, 2]) if v["price"] > 200 else rnd.choice([1, 2, 5, 10])
                                 tot += q * v["price"]
+                                camp = rnd.random() < .25
+                                cid = rnd.choice(["1012", "1015", "1021"]) if camp else ""
                                 s.add(OrderItem(order_id=o.id, firm_id=f.id, integration_id=i.id, product_id=v["pid"],
-                                                variant_id=v["vid"], sku=v["sku"], name=v["name"], quantity=q, amount=q * v["price"]))
+                                                variant_id=v["vid"], sku=v["sku"], name=v["name"], quantity=q, amount=q * v["price"],
+                                                campaign_id=cid, discount=round(q * v["price"] * .15, 2) if camp else 0))
                             o.total = tot
                     else:
                         base = daily_orders * aov * {"meta": .07, "google_ads": .045}[k] if daily_orders else 1200

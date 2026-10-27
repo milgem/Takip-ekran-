@@ -7,6 +7,9 @@ from datetime import date, datetime, timedelta, time as dtime
 
 from .. import config
 from .. import channels
+import logging
+
+log = logging.getLogger("ticimax")
 from .base import ItemRow, StockRow, ConnectorError, Field, FetchResult, OrderRow
 
 KIND = "ticimax"
@@ -222,8 +225,16 @@ def _items(raw, unit_price: bool) -> list:
             product_id=str(_get(u, "UrunKartiID", default="") or ""), variant_id=str(_get(u, "UrunID", default="") or ""),
             sku=str(_get(u, "StokKodu", default="") or ""), barcode=str(_get(u, "Barkod", default="") or ""),
             name=str(_get(u, "UrunAdi", default="") or ""), quantity=qty,
-            amount=tutar * qty if unit_price else tutar))
+            amount=tutar * qty if unit_price else tutar,
+            cost=_num(_get(u, "Maliyet", default=0)) * (qty if unit_price else 1),
+            discount=_num(_get(u, "KampanyaIndirimTutari", default=0)),
+            campaign_id=_campaign_id(_get(u, "KampanyaID", default=""))))
     return out
+
+
+def _campaign_id(v) -> str:
+    s = str(v if v is not None else "").strip()
+    return "" if s in ("", "0", "-1", "None") else s
 
 
 def _unit_price_mode(pairs) -> bool:
@@ -342,8 +353,51 @@ def stock_diagnostics(cfg) -> str:
     fields = ", ".join(k for k, v in _flat(u).items() if v not in ("", None))[:300]
     vfields = ", ".join(k for k, v in _flat(vars_[0]).items() if v not in ("", None))[:300] if vars_ else "-"
     sample = f"{_variant_text(_get(vars_[0], 'Ozellikler'))} · stok {_num(_get(vars_[0], 'StokAdedi'))}" if vars_ else "-"
-    return (f" Stok testi: '{label}' filtresiyle ilk {len(page)} üründe {n_var} varyasyon. Ürün alanları: {fields}."
+    brands = _brand_map(client, cfg)
+    mk = f" Marka: {_brand_name(u, brands) or 'bulunamadı'} (marka listesi: {len(brands)} kayıt), kategori: {_category_name(u) or 'bulunamadı'}."
+    return (f" Stok testi: '{label}' filtresiyle ilk {len(page)} üründe {n_var} varyasyon.{mk} Ürün alanları: {fields}."
             f" Varyasyon alanları: {vfields}. Örnek varyasyon: {sample}. Okuma işlemleri: {sel[:400]}.")
+
+
+def _brand_map(client, cfg) -> dict:
+    """Marka ID → ad. Ürün servisinde SelectMarka varsa kullanılır; yoksa boş döner."""
+    out = {}
+    try:
+        ops = {op for svc in client.wsdl.services.values() for port in svc.ports.values() for op in port.binding._operations}
+        if "SelectMarka" not in ops:
+            return out
+        try:
+            res = client.service.SelectMarka(UyeKodu=cfg["uye_kodu"], markaID=0)
+        except Exception:  # noqa: BLE001 — parametre adı sürüme göre değişebiliyor
+            res = client.service.SelectMarka(UyeKodu=cfg["uye_kodu"])
+        for m in _unwrap(res, "Marka"):
+            mid = str(_get(m, "ID", default="") or "")
+            name = str(_get(m, "Tanim", "MarkaAdi", "Ad", "Isim", default="") or "").strip()
+            if mid and name:
+                out[mid] = name
+    except Exception as e:  # noqa: BLE001
+        log.info("Ticimax marka listesi alınamadı: %s", str(e)[:150])
+    return out
+
+
+def _brand_name(u, brands: dict) -> str:
+    m = _get(u, "Marka", "MarkaAdi", default="")
+    if m and not isinstance(m, (int, float)):
+        txt = str(_get(m, "Tanim", "MarkaAdi", default="") or "") if not isinstance(m, str) else m
+        if txt.strip():
+            return txt.strip()
+    mid = str(_get(u, "MarkaID", default="") or "")
+    return brands.get(mid, "")
+
+
+def _category_name(u) -> str:
+    c = _get(u, "AnaKategori", "KategoriAdi", default="")
+    if c and not isinstance(c, (str, int, float)):
+        c = _get(c, "Tanim", "KategoriAdi", "Ad", default="")
+    c = str(c or "").strip()
+    if c and not c.isdigit():
+        return c.split(">")[-1].strip() if ">" in c else c
+    return ""
 
 
 def fetch_stock(cfg) -> list:
@@ -359,18 +413,22 @@ def fetch_stock(cfg) -> list:
         except Exception as e:  # noqa: BLE001
             raise ConnectorError(f"Ticimax ürün servisi hatası: {str(e)[:250]}") from e
 
+    brands = _brand_map(client, cfg)
     rows = []
+    log.info("Ticimax ürün servisi: '%s' filtresiyle ürünler çekiliyor", label)
     for u in _paged(get_page, size):
         pname = str(_get(u, "UrunAdi", default="") or "")
         pid = str(_get(u, "ID", default="") or "")
         p_active = bool(_get(u, "Aktif", default=True))
+        brand = _brand_name(u, brands)
+        category = _category_name(u)
         for v in _unwrap(_get(u, "Varyasyonlar"), "Varyasyon"):
             rows.append(StockRow(
                 product_id=pid, variant_id=str(_get(v, "ID", default="") or ""), product_name=pname,
                 variant=_variant_text(_get(v, "Ozellikler")), sku=str(_get(v, "StokKodu", default="") or ""),
                 barcode=str(_get(v, "Barkod", default="") or ""), stock=_num(_get(v, "StokAdedi", default=0)),
                 price=_num(_get(v, "SatisFiyati", default=0)),
-                active=p_active and bool(_get(v, "Aktif", default=True))))
+                active=p_active and bool(_get(v, "Aktif", default=True)), brand=brand, category=category))
     return rows
 
 
@@ -432,6 +490,7 @@ def _call(cfg, start: datetime, end: datetime):
             raise ConnectorError(f"Ticimax hatası: {msg[:300]}") from e
         return list(page or [])
     rows = _paged(get_page, size)
+    log.info("Ticimax siparişleri %s – %s: %s kayıt", start, end, len(rows))
     # Sayfalama hiç çalışmıyorsa (tam 100'ün katı kadar kayıt) aralık ikiye bölünüp ayrı ayrı istenir
     if rows and len(rows) % size == 0 and (end - start) > timedelta(hours=6):
         mid = start + (end - start) / 2
@@ -495,14 +554,36 @@ def _to_row(o, cfg) -> OrderRow:
         is_pending=d in PENDING and not unpaid,
         is_cancelled=unpaid,   # sipariş statüsü ayrımı yok; ciroyu ödeme statüsü belirler (web sitesi)
         channel=ch,
+        commission=abs(_num(_get(o, "PazaryeriKomisyonTutari", default=0))),
+        cost=_num(_get(o, "Maliyet", default=0)),
     )
 
 
+def _step(cfg, text):
+    p = cfg.get("_progress")
+    if isinstance(p, dict):
+        p["step"] = text
+    log.info("Ticimax test: %s", text)
+
+
 def test(cfg) -> str:
+    import time as _t
     now = datetime.now(config.TIMEZONE).replace(tzinfo=None)
-    rows = _call(cfg, now - timedelta(days=7), now)
+    _step(cfg, f"sipariş servisi tanımı (WSDL) indiriliyor: https://{cfg.get('domain', '').strip()}/Servis/SiparisServis.svc?wsdl")
+    t0 = _t.time()
+    _client(cfg)
+    _step(cfg, f"WSDL alındı ({_t.time() - t0:.1f} sn); son 1 günün siparişleri isteniyor")
+    t0 = _t.time()
+    rows = _call(cfg, now - timedelta(days=1), now)
+    took = _t.time() - t0
+    if took < 8:   # hızlı sitelerde daha anlamlı bir özet için 7 gün
+        _step(cfg, f"1 günlük sipariş {took:.1f} sn'de geldi; son 7 gün isteniyor")
+        rows, span = _call(cfg, now - timedelta(days=7), now), "7 günde"
+    else:
+        span = f"1 günde (bu sitede 1 günlük sipariş {took:.0f} sn sürüyor; ilk senkronizasyon parça parça yapılır)"
+    _step(cfg, "siparişler alındı; ürün ve stok servisi deneniyor")
     if not rows:
-        return "Bağlantı başarılı, ancak son 7 günde sipariş bulunamadı."
+        return f"Bağlantı başarılı, ancak son {span} sipariş bulunamadı."
     from collections import Counter
     parsed = [_to_row(o, cfg) for o in rows]
     dist = Counter(r.channel for r in parsed)
@@ -522,7 +603,9 @@ def test(cfg) -> str:
     else:
         n_items = sum(len(x or []) for x in raws)
         mode = "birim fiyat" if _unit_price_mode([(p.total, x) for p, x in zip(parsed, raws)]) else "satır toplamı"
-        items_info = f" Ürün kalemleri: {n_items} kalem (kalem tutarı {mode} olarak okunuyor)."
+        n_camp = sum(1 for x in raws for u in (x or []) if _campaign_id(_get(u, "KampanyaID", default="")))
+        items_info = (f" Ürün kalemleri: {n_items} kalem (kalem tutarı {mode} olarak okunuyor), "
+                      f"{n_camp} kalemde site kampanyası var.")
     unpaid = sum(1 for x in parsed if x.is_cancelled)
     if any(_payments(o) is not None for o in rows):
         cross = Counter(f"{'Web' if x.channel == channels.WEB else 'Pazaryeri'}: {x.status or '?'} / "
@@ -532,7 +615,7 @@ def test(cfg) -> str:
                    + ". Ödeme tipleri: " + ", ".join(f"{k}:{v}" for k, v in tips.most_common(8)) + ".")
     else:
         payinfo = " UYARI: Ticimax sipariş verisinde ödeme bilgisi (Odemeler) gelmiyor, ödeme statüsü okunamıyor."
-    return (f"Bağlantı başarılı: son 7 günde {len(rows)} sipariş, {unpaid} tanesi ödeme statüsü nedeniyle ciro dışı."
+    return (f"Bağlantı başarılı: son {span} {len(rows)} sipariş, {unpaid} tanesi ödeme statüsü nedeniyle ciro dışı."
             + payinfo + items_info + stock_diagnostics(cfg) + " Kanallar: "
             + ", ".join(f"{k} {v}" for k, v in dist.most_common())
             + f". Örnek: #{r.number} · {r.total:,.2f} · {r.status}."
@@ -547,7 +630,12 @@ def fetch(cfg, start: date, end: date) -> FetchResult:
     if raws and all(r is None for r in raws):
         # Sipariş listesinde ürünler gelmiyorsa her sipariş için ayrı ayrı istenir
         client = _client(cfg)
-        raws = [_fetch_items_separately(cfg, client, _get(o, "ID", "SiparisID")) for o in rows]
+        log.info("Ticimax: ürün kalemleri listede yok, %s sipariş için ayrı ayrı isteniyor", len(rows))
+        raws = []
+        for n, o in enumerate(rows, 1):
+            raws.append(_fetch_items_separately(cfg, client, _get(o, "ID", "SiparisID")))
+            if n % 100 == 0:
+                log.info("Ticimax ürün kalemleri: %s / %s", n, len(rows))
     unit = _unit_price_mode([(r.total, raw) for r, raw in zip(out, raws)])
     for r, raw in zip(out, raws):
         r.items = _items(raw, unit) if raw is not None else None

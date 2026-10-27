@@ -1,0 +1,49 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<script src="/static/chart.umd.min.js"></script>
+<script>
+(function () {
+  var box = document.getElementById('kampanyalar');
+  if (!box) return;
+  var src = '', onlyActive = document.getElementById('camp-active');
+  function apply() {
+    box.querySelectorAll('tr[data-src]').forEach(function (tr) {
+      tr.hidden = (src && tr.dataset.src !== src) || (onlyActive.checked && tr.dataset.active !== '1');
+    });
+  }
+  box.querySelectorAll('[data-camp-filter]').forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      src = a.dataset.campFilter;
+      box.querySelectorAll('[data-camp-filter]').forEach(function (b) { b.classList.toggle('on', b === a); });
+      apply();
+    });
+  });
+  onlyActive.addEventListener('change', apply);
+})();
+const S = {{ series|tojson }}, H = {{ hourly|tojson }}, HAS_STORE = {{ c.has_store|tojson }}, HAS_ADS = {{ c.has_ads|tojson }};
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+Chart.defaults.color = css('--ink-3');
+const grid = { color: css('--line') }, acc = css('--accent');
+const money = { callback: v => v >= 1000 ? '₺' + (v/1000).toLocaleString('tr-TR') + 'b' : '₺' + v };
+const tip = { callbacks: { label: c => ' ' + c.dataset.label + ': ' + tl(c.parsed.y || 0) } };
+const ds = [];
+const HAS_MP = {{ c.has_mp|tojson }}, MP = css('--mp');
+if (HAS_STORE) ds.push({ type: 'bar', label: HAS_MP ? 'Web sitesi' : 'Ciro', data: S.web, backgroundColor: acc, yAxisID: 'y', order: 2, stack: 'c' });
+if (HAS_STORE && HAS_MP) ds.push({ type: 'bar', label: 'Pazaryeri', data: S.mp, backgroundColor: MP, yAxisID: 'y', order: 2, stack: 'c' });
+if (HAS_ADS) ds.push({ type: 'line', label: 'Reklam', data: S.spend, borderColor: '#7c3aed', backgroundColor: '#7c3aed',
+  tension: .3, pointRadius: 0, borderWidth: 2, yAxisID: HAS_STORE ? 'y1' : 'y', order: 1 });
+new Chart(document.getElementById('daily'), {
+  data: { labels: S.labels, datasets: ds },
+  options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip },
+    scales: { x: { grid: { display: false }, stacked: true }, y: { grid, ticks: money, beginAtZero: true, stacked: true },
+      y1: { display: HAS_STORE && HAS_ADS, position: 'right', grid: { display: false }, ticks: money, beginAtZero: true } } }
+});
+if (H) new Chart(document.getElementById('hourly'), {
+  type: 'line',
+  data: { labels: H.labels, datasets: [
+    { label: 'Bugün', data: H.today, borderColor: acc, backgroundColor: acc, pointRadius: 0, borderWidth: 2.5, tension: .25 },
+    { label: 'Dün', data: H.yesterday, borderColor: '#a1a1aa', borderDash: [4, 4], pointRadius: 0, borderWidth: 1.5, tension: .25 } ] },
+  options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false }, tooltip: tip },
+    scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } }, y: { grid, ticks: money, beginAtZero: true } } }
+});
+</script>

@@ -1,0 +1,29 @@
+{% extends "_firmbase.html" %}
+{% block period %}{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %}{% endblock %}
+{% block firm %}
+{% set xq = '/firma/' ~ firm.id ~ '/analiz/excel?v=' ~ v ~ '&' ~ qs %}
+<div class="toolbar">
+  <nav class="seg" aria-label="Satış">
+    <a href="?v=ozet&{{ qs }}" class="{{ 'on' if v == 'ozet' }}">Özet</a>
+    <a href="?v=siparis&{{ qs }}" class="{{ 'on' if v == 'siparis' }}">Siparişler</a>
+    <a href="?v=karlilik&{{ qs }}" class="{{ 'on' if v == 'karlilik' }}">Kârlılık</a>
+    <a href="?v=saat&{{ qs }}" class="{{ 'on' if v == 'saat' }}">Gün ve saat</a>
+  </nav>
+  {{ range_chips(preset, start, end, '/firma/' ~ firm.id ~ '/satis', '&v=' ~ v) }}
+</div>
+
+{% if v == 'ozet' %}
+{% include "parts/kpis_chart.html" %}
+{% include "parts/channels.html" %}
+{% include "parts/unpaid.html" %}
+{% include "parts/hourly.html" %}
+{% include "parts/firm_script.html" %}
+{% elif v == 'siparis' %}
+{% include "parts/orders.html" %}
+{% include "parts/pending.html" %}
+{% elif v == 'karlilik' %}
+{% include "parts/profit.html" %}
+{% else %}
+{% include "parts/heat.html" %}
+{% endif %}
+{% endblock %}

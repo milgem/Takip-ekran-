@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from . import config
 from .channels import WEB, is_marketplace
 from .connectors import AD_KINDS, STORE_KINDS
-from .db import AdCampaignDaily, AdDaily, Firm, Order
+from .db import AdCampaignDaily, AdDaily, Firm, Order, UnpaidHourly
 
 PRESETS = {
     "bugun": "Bugün", "dun": "Dün", "7g": "Son 7 gün", "30g": "Son 30 gün", "buay": "Bu ay", "gecenay": "Geçen ay",
@@ -111,9 +111,11 @@ def summary(s, firm_id: int, start: date, end: date, until_now: bool = False) ->
         elif (ch or WEB) == WEB:
             out.web_revenue += rev
             out.web_orders += cnt
-    out.cancelled = s.scalar(select(func.count(Order.id)).where(
+    out.cancelled = (s.scalar(select(func.count(Order.id)).where(
         Order.firm_id == firm_id, Order.is_cancelled.is_(True),
-        Order.created_at >= _dt(start), Order.created_at <= end_dt)) or 0
+        Order.created_at >= _dt(start), Order.created_at <= end_dt)) or 0) + int(s.scalar(select(
+            func.coalesce(func.sum(UnpaidHourly.count), 0)).where(
+            UnpaidHourly.firm_id == firm_id, UnpaidHourly.hour >= _dt(start), UnpaidHourly.hour <= end_dt)) or 0)
     for src, sp, cv, cn, ld, cl, im in s.execute(select(
             AdDaily.source, func.sum(AdDaily.spend), func.sum(AdDaily.conversion_value), func.sum(AdDaily.conversions),
             func.sum(AdDaily.leads), func.sum(AdDaily.clicks), func.sum(AdDaily.impressions)).where(
@@ -285,3 +287,33 @@ def campaigns(s, firm_id: int, start: date, end: date) -> list[dict]:
         })
     rows.sort(key=lambda x: -x["spend"])
     return rows
+
+
+def unpaid_summary(s, firm_id: int, start: date, end: date) -> dict:
+    """Ödemesi tamamlanmayan denemeler: durum ve gün bazında; web sitesi ödeme başarı oranı."""
+    rows = list(s.execute(select(UnpaidHourly.hour, UnpaidHourly.channel, UnpaidHourly.payment_status,
+                                 UnpaidHourly.count, UnpaidHourly.amount).where(
+        UnpaidHourly.firm_id == firm_id, UnpaidHourly.hour >= _dt(start), UnpaidHourly.hour <= _dt(end, True))))
+    by_status, by_day = {}, {}
+    for hour, ch, st, n, amt in rows:
+        x = by_status.setdefault(st or "Bilinmiyor", [0, 0.0])
+        x[0] += n
+        x[1] += amt
+        d = by_day.setdefault(hour.date(), [0, 0.0])
+        d[0] += n
+        d[1] += amt
+    paid_day = {}
+    for created, in s.execute(select(Order.created_at).where(
+            Order.firm_id == firm_id, Order.channel == WEB, Order.is_cancelled.is_(False),
+            Order.created_at >= _dt(start), Order.created_at <= _dt(end, True))):
+        paid_day[created.date()] = paid_day.get(created.date(), 0) + 1
+    days = []
+    for d in sorted(set(by_day) | set(paid_day), reverse=True):
+        u, amt = by_day.get(d, [0, 0.0])
+        p = paid_day.get(d, 0)
+        days.append({"day": d, "unpaid": u, "amount": amt, "paid": p, "rate": p / (p + u) * 100 if (p + u) else None})
+    total_u = sum(v[0] for v in by_status.values())
+    total_p = sum(paid_day.values())
+    return {"count": total_u, "amount": sum(v[1] for v in by_status.values()),
+            "statuses": sorted(({"status": k, "count": v[0], "amount": v[1]} for k, v in by_status.items()), key=lambda x: -x["count"]),
+            "days": days, "paid": total_p, "rate": total_p / (total_p + total_u) * 100 if (total_p + total_u) else None}

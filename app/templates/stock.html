@@ -1,0 +1,51 @@
+{% extends "_firmbase.html" %}
+{% block period %}{% if v == 'cok' %}{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %}{% elif v == 'siparis' %}Son 30 günün satış hızına göre{% else %}Son {{ gun }} günde satmayanlar{% endif %}{% endblock %}
+{% block firm %}
+{% set xq = '/firma/' ~ firm.id ~ '/analiz/excel?v=' ~ v ~ '&lead=' ~ lead ~ '&cover=' ~ cover ~ '&mod=' ~ mod ~ '&seri=' ~ seri ~ '&moq=' ~ moq ~ '&gun=' ~ gun ~ '&' ~ qs %}
+{% if v == 'siparis' %}
+<div class="qa">
+  <div class="q">Ne sipariş etmeliyim?</div>
+  {% if d.has_stock %}
+  {% if mod == 'beden' %}
+  <h1 class="lead">{{ d.rows|length|num }} beden sipariş edilmeli{% if d.acil %}, <span class="bad-t">{{ d.acil|num }}'i acil</span>{% endif %}</h1>
+  <div class="muted">Toplam {{ d.total_qty|num }} adet · tedarik süresi {{ lead }} gün, {{ cover }} günlük stok hedefi</div>
+  {% else %}
+  <h1 class="lead">{{ d.groups|length|num }} model sipariş edilmeli{% if d.urgent %}, <span class="bad-t">{{ d.urgent|num }}'i acil</span>{% endif %}</h1>
+  <div class="muted">Toplam {{ d.total_qty|num }} adet · {{ d.total_series|num }} seri · üretim/tedarik süresi {{ lead }} gün, {{ cover }} günlük stok hedefi</div>
+  {% endif %}
+  {% else %}<h1 class="lead">Stok bilgisi bekleniyor</h1>{% endif %}
+</div>
+{% endif %}
+
+<div class="toolbar">
+  <nav class="seg" aria-label="Ürün ve stok">
+    <a href="?v=siparis" class="{{ 'on' if v == 'siparis' }}">Sipariş önerisi</a>
+    <a href="?v=cok&{{ qs }}" class="{{ 'on' if v == 'cok' }}">Çok satanlar</a>
+    <a href="?v=olu" class="{{ 'on' if v == 'olu' }}">Satmayan stok</a>
+  </nav>
+  {% if v == 'cok' %}{{ range_chips(preset, start, end, '/firma/' ~ firm.id ~ '/urunler', '&v=cok' ~ (('&g=' ~ g) if g else '')) }}{% endif %}
+</div>
+
+{% if v == 'siparis' %}
+{% include "parts/reorder.html" %}
+{% elif v == 'olu' %}
+{% include "parts/dead.html" %}
+{% else %}
+<div class="row" style="gap:10px;margin-bottom:12px">
+  <nav class="chips" aria-label="Gruplama">
+    <a href="?v=cok&{{ qs }}" class="{{ 'on' if not g }}">Ürün</a>
+    <a href="?v=cok&g=marka&{{ qs }}" class="{{ 'on' if g == 'marka' }}">Marka</a>
+    <a href="?v=cok&g=kategori&{{ qs }}" class="{{ 'on' if g == 'kategori' }}">Kategori</a>
+  </nav>
+  {% if g and has_mp %}
+  <nav class="chips" aria-label="Kanal">
+    <a href="?v=cok&g={{ g }}&{{ qs }}" class="{{ 'on' if k not in ('web', 'mp') }}">Tüm kanallar</a>
+    <a href="?v=cok&g={{ g }}&k=web&{{ qs }}" class="{{ 'on' if k == 'web' }}">Web sitesi</a>
+    <a href="?v=cok&g={{ g }}&k=mp&{{ qs }}" class="{{ 'on' if k == 'mp' }}">Pazaryerleri</a>
+  </nav>
+  {% endif %}
+</div>
+{% if g %}{% if a.has_items %}{% include "_groups.html" %}{% else %}<div class="card empty"><p>Bu dönemde ürün satışı yok.</p></div>{% endif %}
+{% else %}{% include "parts/best.html" %}{% endif %}
+{% endif %}
+{% endblock %}

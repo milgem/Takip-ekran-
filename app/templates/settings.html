@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 {% set active = 'settings' %}
 {% block title %}Ayarlar · Panel{% endblock %}
+{% from "_macros.html" import logo %}
 {% block content %}
+{% if request.query_params.get('logo') == 'tur' %}<div class="alert red">Logo yüklenemedi: dosya PNG, JPG, WEBP ya da SVG olmalı.</div>{% elif request.query_params.get('logo') == 'adres' %}<div class="alert red">Logo bu adresten alınamadı. Adresin doğrudan resme (png, jpg, webp, svg) gittiğinden emin ol.</div>{% elif request.query_params.get('logo') == 'boyut' %}<div class="alert red">Logo yüklenemedi: dosya 1 MB'tan büyük.</div>{% endif %}
 <h1 style="margin-bottom:4px">Firmalar ve bağlantılar</h1>
 <p class="muted small" style="margin-top:0">Veriler her {{ cfg.SYNC_MINUTES }} dakikada bir otomatik çekilir. Yeni bağlantıda son {{ cfg.BACKFILL_DAYS }} günün geçmişi alınır.</p>
 
 {% for f in firms %}
-<div class="card" style="margin-top:14px">
+<div class="card" style="margin-top:14px" id="firma-{{ f.id }}">
   <div class="firm-head" style="margin-bottom:6px">
-    <span class="dot" style="background:{{ f.color }}"></span><h3>{{ f.name }}</h3>
+    {{ logo(f, 40) }}<h3>{{ f.name }}</h3>
     <div class="tags"><button class="btn sm" onclick="document.getElementById('edit{{ f.id }}').toggleAttribute('hidden')">Düzenle</button></div>
   </div>
   <form id="edit{{ f.id }}" method="post" action="/firma/kaydet" class="stack" hidden style="margin:10px 0 14px">
@@ -19,12 +21,22 @@
       <label style="width:130px">ROAS uyarı eşiği<input type="number" step="0.1" name="roas_alert" value="{{ f.roas_alert }}"></label>
     </div>
     <label>Not<textarea name="note" rows="2">{{ f.note }}</textarea></label>
+    <div class="row" style="gap:10px">
+      {{ logo(f, 48) }}
+      <label class="inline small" style="font-weight:600">Logo (PNG, JPG, WEBP ya da SVG, en fazla 1 MB)
+        <input type="file" name="logo" accept="image/png,image/jpeg,image/webp,image/svg+xml" form="logo{{ f.id }}" onchange="this.form.submit()" style="width:auto"></label>
+      <span class="logo-url"><input type="url" name="url" form="logourl{{ f.id }}" placeholder="ya da logo adresi: https://…/logo.png"><button class="btn sm" form="logourl{{ f.id }}">Adresten al</button></span>
+      {% if f.logo %}<button class="btn sm" form="logodel{{ f.id }}">Logoyu kaldır</button>{% endif %}
+    </div>
     <div class="row">
       <button class="btn primary sm">Kaydet</button>
       <button class="btn danger sm" formaction="/firma/{{ f.id }}/sil" onclick="return confirm('{{ f.name }} ve tüm verileri silinsin mi?')">Firmayı sil</button>
     </div>
   </form>
 
+  <form id="logo{{ f.id }}" method="post" action="/firma/{{ f.id }}/logo" enctype="multipart/form-data" hidden></form>
+  <form id="logourl{{ f.id }}" method="post" action="/firma/{{ f.id }}/logo/adres" hidden></form>
+  <form id="logodel{{ f.id }}" method="post" action="/firma/{{ f.id }}/logo/sil" hidden></form>
   {% for i in f.integrations %}
   <div class="integ">
     <span class="name">{{ REGISTRY[i.kind].TITLE }}{% if i.label %} <span class="muted small">· {{ i.label }}</span>{% endif %}{% if not i.enabled %} <span class="tag">kapalı</span>{% endif %}</span>

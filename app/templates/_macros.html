@@ -4,17 +4,20 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro range_chips(preset, start, end, base) -%}
-<div class="chips">
-  {% for k, label in PRESETS.items() %}<a href="{{ base }}?p={{ k }}" class="{{ 'on' if preset == k }}">{{ label }}</a>{% endfor %}
-  {% if preset == 'ozel' %}<a class="on">{{ start.strftime('%d.%m') }} – {{ end.strftime('%d.%m') }}</a>{% endif %}
-  <a href="#" onclick="document.getElementById('custom').style.display='flex';return false">Tarih seç…</a>
+{% macro range_chips(preset, start, end, base, extra='') -%}
+<div class="range">
+  <div class="chips">
+    {% for k, label in PRESETS.items() %}<a href="{{ base }}?p={{ k }}{{ extra }}" class="{{ 'on' if preset == k }}">{{ label }}</a>{% endfor %}
+    {% if preset == 'ozel' %}<a class="on" href="#">{{ start.strftime('%d.%m') }} – {{ end.strftime('%d.%m') }}</a>{% endif %}
+    <a href="#" onclick="var f=this.closest('.range').querySelector('form');f.hidden=!f.hidden;return false">Tarih seç…</a>
+  </div>
+  <form method="get" action="{{ base }}" class="row range-form" hidden>
+    {% for kv in extra.split('&') if '=' in kv %}<input type="hidden" name="{{ kv.split('=')[0] }}" value="{{ kv.split('=')[1] }}">{% endfor %}
+    <input type="date" name="bas" value="{{ start.isoformat() }}" aria-label="Başlangıç" style="width:auto">
+    <input type="date" name="bit" value="{{ end.isoformat() }}" aria-label="Bitiş" style="width:auto">
+    <button class="btn sm">Göster</button>
+  </form>
 </div>
-<form id="custom" method="get" action="{{ base }}" class="row" style="display:none;margin-top:8px">
-  <input type="date" name="bas" value="{{ start.isoformat() }}" style="width:auto">
-  <input type="date" name="bit" value="{{ end.isoformat() }}" style="width:auto">
-  <button class="btn sm">Göster</button>
-</form>
 {%- endmacro %}
 
 {% macro kind_name(k) -%}{{ REGISTRY[k].TITLE }}{%- endmacro %}
@@ -26,8 +29,35 @@
   <a href="{{ base }}#ozet" data-tab="ozet">Özet</a>
   {% if has_store %}<a href="{{ base }}#satis" data-tab="satis">Satış kanalları</a>
   <a href="{{ base }}#siparis" data-tab="siparis">Siparişler{% if pending %} <span class="count-badge" title="Kargolanmayı bekleyen sipariş">{{ pending }} bekleyen</span>{% endif %}</a>
-  <a href="/firma/{{ firm.id }}/urunler?{{ qs }}" class="{{ 'on' if current == 'urunler' }}" {% if current == 'urunler' %}aria-current="page"{% endif %}>Ürünler</a>{% endif %}
+  <a href="/firma/{{ firm.id }}/urunler?{{ qs }}" class="{{ 'on' if current == 'urunler' }}" {% if current == 'urunler' %}aria-current="page"{% endif %}>Ürünler</a>
+  <a href="/firma/{{ firm.id }}/analiz?{{ qs }}" class="{{ 'on' if current == 'analiz' }}" {% if current == 'analiz' %}aria-current="page"{% endif %}>Analiz</a>{% endif %}
   {% if has_ads %}<a href="{{ base }}#reklam" data-tab="reklam">Reklam &amp; kampanyalar</a>{% endif %}
   <a href="{{ base }}#baglanti" data-tab="baglanti">Bağlantılar</a>
 </nav>
+{%- endmacro %}
+
+{% macro daypill(dl) -%}
+{%- if dl is none -%}<span class="muted">–</span>
+{%- elif dl <= 0 -%}<span class="pill bad">Tükendi</span>
+{%- else -%}<span class="pill {{ 'bad' if dl < 4 else ('warn' if dl < 14 else 'ok') }}">{{ (dl|round(0, 'floor')|int) if dl >= 1 else '<1' }} gün</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro xlsbtn(href, label='Excel olarak indir') -%}
+<a class="btn sm" href="{{ href }}" download><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>{{ label }}</a>
+{%- endmacro %}
+
+{% macro stockcell(v) -%}
+{%- if v is none -%}<td class="r muted">–</td>
+{%- elif v <= 0 -%}<td class="r" data-v="{{ v }}"><span class="pill bad">Tükendi</span></td>
+{%- else -%}<td class="r" data-v="{{ v }}">{{ v|num }}</td>{%- endif -%}
+{%- endmacro %}
+
+{# Açıklamalar ekranı kalabalıklaştırmasın: küçük bir "?" simgesinin arkasında #}
+{% macro help(text) -%}
+<details class="help"><summary aria-label="Açıklama">?</summary><div class="help-pop">{{ text }}</div></details>
+{%- endmacro %}
+
+{% macro logo(firm, size=40) -%}
+{%- if firm.logo -%}{%- set py = (size * 0.14)|round|int -%}{%- set px = (size * 0.18)|round|int -%}<span class="flogo img" style="height:{{ size }}px;min-width:{{ size }}px;padding:{{ py }}px {{ px }}px"><img src="/logo/{{ firm.id }}?v={{ firm.logo|urlencode }}" alt="{{ firm.name }} logosu" style="height:{{ size - 2 * py - 2 }}px;max-width:{{ (size * 2.6)|round|int }}px"></span>
+{%- else -%}<span class="flogo mono" role="img" aria-label="{{ firm.name }}" style="width:{{ size }}px;height:{{ size }}px;font-size:{{ (size * 0.36)|round|int }}px;background:{{ firm.color }}">{{ firm.name|initials }}</span>{%- endif -%}
 {%- endmacro %}

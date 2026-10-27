@@ -1,0 +1,10 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if hourly %}<div class="two one">
+  {% if hourly %}
+  <div class="card">
+    <h2>Bugün saat saat (kümülatif ciro)</h2>
+    <div class="legend"><span style="--c:var(--accent)">Bugün</span><span style="--c:#a1a1aa">Dün</span></div>
+    <div class="chart-box"><canvas id="hourly"></canvas></div>
+  </div>
+  {% endif %}
+</div>{% endif %}

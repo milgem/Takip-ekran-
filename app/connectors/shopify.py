@@ -39,7 +39,13 @@ query Orders($cursor: String, $q: String!) {
       lineItems(first: 30) { nodes {
         name variantTitle sku currentQuantity
         discountedTotalSet { shopMoney { amount } }
-        variant { id barcode } product { id title }
+        discountAllocations { allocatedAmountSet { shopMoney { amount } }
+          discountApplication { __typename
+            ... on DiscountCodeApplication { code }
+            ... on AutomaticDiscountApplication { title }
+            ... on ManualDiscountApplication { title }
+            ... on ScriptDiscountApplication { title } } }
+        variant { id barcode inventoryItem { unitCost { amount } } } product { id title vendor productType }
       } }
       __CUSTOMER__
     }
@@ -67,7 +73,15 @@ def _token(cfg) -> str:
     r = httpx.post(f"https://{shop}/admin/oauth/access_token", timeout=30, data={
         "grant_type": "client_credentials", "client_id": cid, "client_secret": secret})
     if r.status_code != 200:
-        raise ConnectorError(f"Shopify token alınamadı ({r.status_code}): {r.text[:200]}")
+        import re
+        m = re.search(r"<title>(.*?)</title>", r.text or "", re.S)
+        detail = (m.group(1).strip() if m else (r.text or "")[:200])
+        if "app_not_installed" in (r.text or ""):
+            raise ConnectorError(f"Uygulama {shop} mağazasına yüklü değil. Dev Dashboard'da sürümü yayınlayıp "
+                                 "uygulamayı bu mağazaya 'Install' ile yükleyin; mağaza adresinin doğru olduğunu kontrol edin.")
+        if "invalid_client" in (r.text or "") or r.status_code == 401:
+            raise ConnectorError("Client ID veya Client Secret hatalı.")
+        raise ConnectorError(f"Shopify token alınamadı ({r.status_code}): {detail[:200]}")
     body = r.json()
     _token_cache[shop] = (body["access_token"], time.time() + int(body.get("expires_in", 86399)))
     return body["access_token"]
@@ -129,11 +143,21 @@ def _line_items(n) -> list:
             continue
         var, prod = li.get("variant") or {}, li.get("product") or {}
         title = li.get("variantTitle") or ""
+        disc, camp = 0.0, ""
+        for da in li.get("discountAllocations") or []:
+            disc += float(((da.get("allocatedAmountSet") or {}).get("shopMoney") or {}).get("amount") or 0)
+            app_ = da.get("discountApplication") or {}
+            name = app_.get("code") or app_.get("title") or ""
+            if name and not camp:
+                camp = name
         out.append(ItemRow(
             product_id=_gid(prod.get("id")), variant_id=_gid(var.get("id")), sku=li.get("sku") or "",
             barcode=var.get("barcode") or "", name=prod.get("title") or li.get("name") or "",
             variant="" if title == "Default Title" else title, quantity=qty,
-            amount=float(((li.get("discountedTotalSet") or {}).get("shopMoney") or {}).get("amount") or 0)))
+            amount=float(((li.get("discountedTotalSet") or {}).get("shopMoney") or {}).get("amount") or 0),
+            discount=disc, campaign_id=camp, campaign=camp,
+            cost=qty * float((((var.get("inventoryItem") or {}).get("unitCost") or {}).get("amount")) or 0),
+            brand=prod.get("vendor") or "", category=prod.get("productType") or ""))
     return out
 
 
@@ -144,7 +168,7 @@ query Variants($cursor: String) {
     nodes {
       id title sku barcode inventoryQuantity price
       selectedOptions { name value }
-      product { id title status }
+      product { id title status vendor productType }
     }
   }
 }"""
@@ -165,7 +189,7 @@ def fetch_stock(cfg) -> list:
                 product_id=_gid(p.get("id")), variant_id=_gid(v["id"]), product_name=p.get("title") or "",
                 variant=" / ".join(others + sizes), sku=v.get("sku") or "", barcode=v.get("barcode") or "",
                 stock=float(v.get("inventoryQuantity") or 0), price=float(v.get("price") or 0),
-                active=(p.get("status") == "ACTIVE")))
+                active=(p.get("status") == "ACTIVE"), brand=p.get("vendor") or "", category=p.get("productType") or ""))
         if not conn["pageInfo"]["hasNextPage"]:
             return rows
         cursor = conn["pageInfo"]["endCursor"]

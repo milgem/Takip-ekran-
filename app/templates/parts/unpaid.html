@@ -1,0 +1,30 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<div class="card" style="margin-top:14px" id="odemesiz">
+  <div class="row between" style="margin-bottom:10px">
+    <div><h2 style="margin:0">Ödemesi tamamlanmayan denemeler</h2>
+      <div class="muted small">Ciroya girmez; sistemi yavaşlatmaması için tek tek değil, saatlik sayı ve tutar olarak tutulur</div></div>
+    {% if unpaid and unpaid.rate is not none %}<div class="r"><div class="muted small">Web sitesi ödeme başarısı</div>
+      <span class="pill {{ 'bad' if unpaid.rate < 50 else ('warn' if unpaid.rate < 75 else 'ok') }}" style="font-size:14px">%{{ unpaid.rate|num(0) }}</span></div>{% endif %}
+  </div>
+  {% if unpaid and unpaid.count %}
+  <div class="row" style="gap:24px;margin-bottom:12px;align-items:flex-start">
+    <div><div class="muted small">Yarıda kalan deneme</div><div style="font-size:20px;font-weight:700">{{ unpaid.count|num }}</div></div>
+    <div><div class="muted small">Tutarı</div><div style="font-size:20px;font-weight:700">{{ unpaid.amount|tl }}</div></div>
+    <div><div class="muted small">Başarılı web siparişi</div><div style="font-size:20px;font-weight:700">{{ unpaid.paid|num }}</div></div>
+    <div style="flex:1;min-width:220px"><div class="muted small" style="margin-bottom:4px">Ödeme durumuna göre</div>
+      {% for st in unpaid.statuses %}<span class="tag" style="margin:0 4px 4px 0">{{ st.status }} · {{ st.count|num }}</span>{% endfor %}</div>
+  </div>
+  <div class="table-scroll tall"><table class="sortable-table">
+    <tr><th>Gün</th><th class="r">Başarılı</th><th class="r">Yarıda kalan</th><th class="r">Yarıda kalan tutar</th><th class="r">Ödeme başarısı</th></tr>
+    {% for d in unpaid.days %}
+    <tr><td data-v="{{ d.day.toordinal() }}">{{ d.day.strftime('%d.%m.%Y') }}</td><td class="r">{{ d.paid|num }}</td><td class="r">{{ d.unpaid|num }}</td>
+      <td class="r muted" data-v="{{ d.amount }}">{{ d.amount|tl }}</td>
+      <td class="r" {% if d.rate is not none %}data-v="{{ d.rate }}"{% endif %}>{% if d.rate is not none %}<span class="pill {{ 'bad' if d.rate < 50 else ('warn' if d.rate < 75 else 'ok') }}">%{{ d.rate|num(0) }}</span>{% else %}–{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="muted small" style="margin-bottom:0">Aynı müşterinin birden fazla denemesi ayrı sayılır; gerçek kayıp müşteri sayısı daha düşüktür.</p>
+  {% else %}
+  <p class="muted" style="margin:0">Bu dönemde ödemesi yarıda kalan deneme yok.</p>
+  {% endif %}
+</div>
+

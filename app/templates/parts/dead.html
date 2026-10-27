@@ -1,0 +1,37 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+<form method="get" class="card row" style="gap:14px;margin-bottom:14px;align-items:flex-end">
+  <input type="hidden" name="v" value="olu">
+  <label style="width:220px">Kaç gündür satmayanlar<input type="number" id="gun" name="gun" min="14" max="365" value="{{ gun }}"></label>
+  <button class="btn primary sm">Göster</button>
+  <p class="muted small" style="margin:0;flex:1;min-width:240px">Stoğu olan ve son {{ gun }} günde hiç satılmayan aktif bedenler. Değer, stok × satış fiyatıdır; bu ürünler indirime, pazaryerine ya da iadeye aday.</p>
+</form>
+{% if d.short_history %}<div class="alert amber" style="margin-bottom:14px">Panelde sipariş geçmişi {{ d.history_from.strftime('%d.%m.%Y') }} tarihinden başlıyor; {{ gun }} günden daha kısa. Listede gerçekte daha önce satmış ürünler de olabilir.</div>{% endif %}
+<div class="kpis">
+  <div class="card kpi"><div class="l">Satmayan ürün</div><div class="v">{{ d.rows|length|num }}</div></div>
+  <div class="card kpi"><div class="l">Bekleyen stok (adet)</div><div class="v">{{ d.total_stock|num }}</div></div>
+  <div class="card kpi"><div class="l">Satış fiyatıyla değeri</div><div class="v">{{ d.total_value|tl }}</div></div>
+</div>
+<div class="card">
+  <div class="filters" data-filter-for="dead-table">
+    <input type="search" id="dead-q" data-f="q" placeholder="Ürün, marka veya kategori ara…" aria-label="Ara">
+    <span class="count" data-count></span>
+    {{ xlsbtn(xq) }}
+  </div>
+  <div class="table-scroll tall"><table class="sortable-table expandable" id="dead-table">
+    <tr><th>Ürün</th><th>Marka</th><th>Kategori</th><th class="r">Beden</th><th class="r">Stok</th><th class="r">Değer</th><th class="r">Son satış</th></tr>
+    {% for r in d.rows[:600] %}
+    <tr data-row class="parent" tabindex="0" aria-expanded="false" aria-controls="dd-{{ loop.index }}" data-q="{{ r.product }} {{ r.brand }} {{ r.category }}">
+      <td data-v="{{ r.product }}"><span class="chev" aria-hidden="true">›</span><b>{{ r.product }}</b></td>
+      <td class="small" data-v="{{ r.brand }}">{{ r.brand or '—' }}</td><td class="small" data-v="{{ r.category }}">{{ r.category or '—' }}</td>
+      <td class="r" data-v="{{ r.variant_count }}">{{ r.variant_count }}</td><td class="r" data-v="{{ r.stock }}">{{ r.stock|num }}</td>
+      <td class="r" data-v="{{ r.value }}"><b>{{ r.value|tl }}</b></td>
+      <td class="r muted" {% if r.last %}data-v="{{ r.last.timestamp()|int }}"{% endif %}>{{ r.last.strftime('%d.%m.%Y') if r.last else 'panel geçmişinde yok' }}</td></tr>
+    <tr class="detail" id="dd-{{ loop.index }}" hidden><td colspan="7">
+      <table class="sub"><tr><th>Beden</th><th>Stok kodu</th><th class="r">Stok</th><th class="r">Fiyat</th><th class="r">Son satış</th></tr>
+        {% for x in r.variants %}<tr><td><b>{{ x.variant }}</b></td><td class="small muted">{{ x.sku or '—' }}</td><td class="r">{{ x.stock|num }}</td><td class="r">{{ x.price|tl(2) if x.price else '–' }}</td><td class="r muted">{{ x.last.strftime('%d.%m.%Y') if x.last else '–' }}</td></tr>{% endfor %}
+      </table></td></tr>
+    {% endfor %}
+  </table></div>
+  {% if d.rows|length > 600 %}<p class="muted small" style="margin-bottom:0">En değerli 600 ürün gösteriliyor (toplam {{ d.rows|length|num }}).</p>{% endif %}
+</div>
+

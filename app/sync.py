@@ -10,7 +10,7 @@ from sqlalchemy import delete, func, select
 from . import config
 from .connectors import REGISTRY, STORE_KINDS, validate
 from .connectors.base import ConnectorError
-from .db import AdCampaignDaily, AdDaily, Integration, Order, OrderItem, SessionLocal, VariantStock
+from .db import AdCampaignDaily, AdDaily, Integration, Order, OrderItem, SessionLocal, UnpaidHourly, VariantStock
 from .secure import decrypt
 
 log = logging.getLogger("sync")
@@ -21,7 +21,32 @@ def today():
     return datetime.now(config.TIMEZONE).date()
 
 
+_running: dict[int, threading.Lock] = {}
+_running_guard = threading.Lock()
+
+
 def sync_integration(integration_id: int) -> tuple[bool, str]:
+    """Aynı bağlantı için aynı anda tek senkron çalışır; ikinci istek beklemeden döner."""
+    with _running_guard:
+        lock = _running.setdefault(integration_id, threading.Lock())
+    if not lock.acquire(blocking=False):
+        return False, "Bu bağlantı şu an zaten senkronize ediliyor, birkaç dakika sonra tekrar bak."
+    try:
+        return _sync_integration(integration_id)
+    except Exception as e:  # noqa: BLE001 — hiçbir hata sessizce kaybolmasın
+        log.exception("sync crashed %s", integration_id)
+        msg = f"Beklenmeyen hata: {type(e).__name__}: {str(e)[:250]}"
+        with SessionLocal() as s:
+            integ = s.get(Integration, integration_id)
+            if integ:
+                integ.last_sync_at, integ.last_ok, integ.last_message = datetime.utcnow(), False, msg
+                s.commit()
+        return False, msg
+    finally:
+        lock.release()
+
+
+def _sync_integration(integration_id: int) -> tuple[bool, str]:
     with SessionLocal() as s:
         integ = s.get(Integration, integration_id)
         if not integ:
@@ -41,26 +66,76 @@ def sync_integration(integration_id: int) -> tuple[bool, str]:
             if cfg.get("demo"):
                 return True, "Deneme verisi"   # örnek bağlantı: dışarıya istek atılmaz
             validate(integ.kind, cfg)
-            result = mod.fetch(cfg, start, end)
-            _maybe_sync_stock(s, integ, mod, cfg)
         except ConnectorError as e:
-            ok, msg = False, str(e)
-        except httpx.HTTPError as e:
-            ok, msg = False, f"Platforma bağlanılamadı: {type(e).__name__}: {str(e)[:200]}"
-        except Exception as e:  # noqa: BLE001
-            log.exception("sync failed %s", integration_id)
-            ok, msg = False, f"Beklenmeyen hata: {type(e).__name__}: {str(e)[:250]}"
+            integ.last_sync_at, integ.last_ok, integ.last_message = datetime.utcnow(), False, str(e)
+            s.commit()
+            return False, str(e)
+
+        # İlk senkron (mağazalar): bugünden geriye doğru küçük parçalarla; her parça kaydedilir,
+        # yarıda kalırsa kaldığı yerden devam eder. Sonraki senkronlar tek pencere.
+        if integ.kind in STORE_KINDS and not integ.backfilled:
+            limit = end - timedelta(days=config.BACKFILL_DAYS)
+            top = (integ.backfill_from - timedelta(days=1)) if integ.backfill_from else end
+            windows = []
+            while top >= limit:
+                bottom = max(limit, top - timedelta(days=config.BACKFILL_CHUNK_DAYS - 1))
+                windows.append((bottom, top))
+                top = bottom - timedelta(days=1)
+            if integ.backfill_from:   # devam ederken son günleri de tazele
+                windows.insert(0, (end - timedelta(days=config.RECENT_DAYS), end))
         else:
-            _store(s, integ, result, start, end)
+            windows = [(start, end)]
+
+        total, ok, msg = 0, True, ""
+        for i, (a, b) in enumerate(windows, 1):
+            if len(windows) > 1:
+                integ.last_message = (f"İlk senkronizasyon sürüyor: {b:%d.%m} – {a:%d.%m} arası çekiliyor "
+                                      f"({i}/{len(windows)}, şu ana kadar {total} sipariş)…")
+                s.commit()
+            try:
+                log.info("sync %s (%s): %s – %s çekiliyor", integration_id, integ.kind, a, b)
+                result = mod.fetch(cfg, a, b)
+            except ConnectorError as e:
+                ok, msg = False, str(e)
+            except httpx.HTTPError as e:
+                ok, msg = False, f"Platforma bağlanılamadı: {type(e).__name__}: {str(e)[:200]}"
+            except Exception as e:  # noqa: BLE001
+                log.exception("sync failed %s", integration_id)
+                ok, msg = False, f"Beklenmeyen hata: {type(e).__name__}: {str(e)[:250]}"
+            if not ok:
+                if len(windows) > 1 and total:
+                    msg = f"{msg} (ilk senkronizasyon {a:%d.%m} tarihinde durdu; {total} sipariş kaydedildi, bir sonraki senkronda devam edecek)"
+                break
+            try:
+                _store(s, integ, result, a, b)
+            except Exception as e:  # noqa: BLE001
+                s.rollback()
+                log.exception("store failed %s", integration_id)
+                integ = s.get(Integration, integration_id)
+                integ.last_sync_at, integ.last_ok = datetime.utcnow(), False
+                integ.last_message = f"Veriler kaydedilemedi: {type(e).__name__}: {str(e)[:250]}"
+                s.commit()
+                return False, integ.last_message
+            total += len(result.orders) if integ.kind in STORE_KINDS else len(result.ads)
+            if integ.kind in STORE_KINDS and not integ.backfilled and (integ.backfill_from is None or a < integ.backfill_from):
+                integ.backfill_from = a
+            s.commit()
+        if ok:
             integ.backfilled = True
-            ok = True
-            msg = f"{len(result.orders)} sipariş" if integ.kind in STORE_KINDS else f"{len(result.ads)} gün"
-            msg += f" güncellendi ({start:%d.%m} – {end:%d.%m})"
+            integ.backfill_from = None
+            first, last = min(w[0] for w in windows), max(w[1] for w in windows)
+            msg = (f"{total} sipariş" if integ.kind in STORE_KINDS else f"{total} gün") + f" güncellendi ({first:%d.%m} – {last:%d.%m})"
         integ.last_sync_at = datetime.utcnow()
         integ.last_ok, integ.last_message = ok, msg
+        s.commit()
+        if ok:   # stoklar siparişler kaydedildikten sonra; uzun sürse de siparişler görünür
+            if hasattr(mod, "fetch_stock") and (integ.stock_synced_at is None):
+                integ.stock_message = "Stoklar çekiliyor…"
+                s.commit()
+            _maybe_sync_stock(s, integ, mod, cfg)
+            s.commit()
         from . import insights
         insights.clear_cache(integ.firm_id)
-        s.commit()
         return ok, msg
 
 
@@ -72,7 +147,9 @@ def _maybe_sync_stock(s, integ, mod, cfg, force=False):
             datetime.utcnow() - integ.stock_synced_at < timedelta(hours=config.STOCK_HOURS):
         return
     try:
+        t0 = datetime.utcnow()
         rows = mod.fetch_stock(cfg)
+        log.info("stok %s: %s varyasyon, %.0f sn", integ.id, len(rows), (datetime.utcnow() - t0).total_seconds())
     except Exception as e:  # noqa: BLE001
         log.warning("stok alınamadı %s: %s", integ.id, e)
         integ.stock_message = f"Stok alınamadı: {str(e)[:250]}"
@@ -83,13 +160,38 @@ def _maybe_sync_stock(s, integ, mod, cfg, force=False):
         s.add(VariantStock(firm_id=integ.firm_id, integration_id=integ.id, product_id=str(r.product_id)[:64],
                            variant_id=str(r.variant_id)[:64], product_name=(r.product_name or "")[:255],
                            variant=(r.variant or "")[:120], sku=(r.sku or "")[:120], barcode=(r.barcode or "")[:120],
-                           stock=float(r.stock or 0), price=float(r.price or 0), active=bool(r.active)))
+                           stock=float(r.stock or 0), price=float(r.price or 0), active=bool(r.active),
+                           brand=(r.brand or "")[:120], category=(r.category or "")[:200]))
     integ.stock_synced_at = datetime.utcnow()
     integ.stock_message = f"{len(rows)} varyasyon stoğu güncellendi"
 
 
+def _store_unpaid(s, integ, unpaid, start, end):
+    """Ödemesi tamamlanmayan siparişler: pencere için saatlik özet yeniden yazılır, varsa eski satırları silinir."""
+    a = datetime.combine(start, datetime.min.time())
+    b = datetime.combine(end, datetime.max.time())
+    s.execute(delete(UnpaidHourly).where(UnpaidHourly.integration_id == integ.id, UnpaidHourly.hour >= a, UnpaidHourly.hour <= b))
+    agg = {}
+    for r in unpaid:
+        k = (r.created_at.replace(minute=0, second=0, microsecond=0), (r.channel or "Web sitesi")[:40], (r.payment_status or "")[:40])
+        c = agg.setdefault(k, [0, 0.0])
+        c[0] += 1
+        c[1] += float(r.total or 0)
+    for (hour, ch, st), (n, amt) in agg.items():
+        s.add(UnpaidHourly(firm_id=integ.firm_id, integration_id=integ.id, hour=hour, channel=ch, payment_status=st, count=n, amount=amt))
+    ids = [r.external_id for r in unpaid]
+    for i in range(0, len(ids), 500):
+        old = list(s.scalars(select(Order.id).where(Order.integration_id == integ.id, Order.external_id.in_(ids[i:i + 500]))))
+        if old:
+            s.execute(delete(OrderItem).where(OrderItem.order_id.in_(old)))
+            s.execute(delete(Order).where(Order.id.in_(old)))
+
+
 def _store(s, integ, result, start, end):
     if integ.kind in STORE_KINDS:
+        unpaid = [r for r in result.orders if r.is_cancelled and r.payment_status]
+        _store_unpaid(s, integ, unpaid, start, end)
+        result.orders = [r for r in result.orders if not (r.is_cancelled and r.payment_status)]
         existing = {o.external_id: o for o in s.scalars(select(Order).where(
             Order.integration_id == integ.id,
             Order.external_id.in_([r.external_id for r in result.orders] or ["-"])))}
@@ -101,6 +203,7 @@ def _store(s, integ, result, start, end):
             o.channel = (r.channel or "Web sitesi")[:40]
             o.payment_status = (r.payment_status or "")[:40]
             o.customer = (r.customer or "")[:120]
+            o.commission, o.cost = float(r.commission or 0), float(r.cost or 0)
             s.add(o)
             existing[r.external_id] = o
         s.flush()
@@ -114,7 +217,9 @@ def _store(s, integ, result, start, end):
                 s.add(OrderItem(order_id=o.id, firm_id=integ.firm_id, integration_id=integ.id,
                                 product_id=str(it.product_id or "")[:64], variant_id=str(it.variant_id or "")[:64],
                                 sku=(it.sku or "")[:120], barcode=(it.barcode or "")[:120], name=(it.name or "")[:255],
-                                variant=(it.variant or "")[:120], quantity=float(it.quantity or 0), amount=float(it.amount or 0)))
+                                variant=(it.variant or "")[:120], quantity=float(it.quantity or 0), amount=float(it.amount or 0),
+                                discount=float(it.discount or 0), cost=float(it.cost or 0), campaign_id=str(it.campaign_id or "")[:64],
+                                campaign=(it.campaign or "")[:200], brand=(it.brand or "")[:120], category=(it.category or "")[:200]))
     else:
         s.execute(delete(AdDaily).where(AdDaily.integration_id == integ.id,
                                         AdDaily.day >= start, AdDaily.day <= end))

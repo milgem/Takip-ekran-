@@ -49,8 +49,20 @@ def product_analysis(s, firm_id: int, start: date, end: date, channel: str = "")
 
     variants: dict = {}
     products: dict = {}
+    camps: dict = {}
     for it, created, ch, oid in rows:
         st = match(it)
+        if it.campaign_id or it.campaign or it.discount:
+            ck = it.campaign_id or it.campaign or "indirim"
+            cp = camps.get(ck)
+            if not cp:
+                cp = camps[ck] = {"id": it.campaign_id, "name": it.campaign, "qty": 0.0, "revenue": 0.0, "discount": 0.0,
+                                  "orders": set(), "products": defaultdict(lambda: [0.0, 0.0]), "first": created, "last": created}
+            cp["qty"] += it.quantity
+            cp["revenue"] += it.amount
+            cp["discount"] += it.discount or 0
+            cp["orders"].add(oid)
+            cp["first"], cp["last"] = min(cp["first"], created), max(cp["last"], created)
         pkey = (it.integration_id, st.product_id if st else (it.product_id or _norm(it.name)))
         vkey = (it.integration_id, st.variant_id if st else (it.variant_id or it.sku or _norm(it.name) + "|" + _norm(it.variant)))
         pname = (st.product_name if st and st.product_name else it.name) or it.sku or "Adsız ürün"
@@ -58,7 +70,7 @@ def product_analysis(s, firm_id: int, start: date, end: date, channel: str = "")
         v = variants.get(vkey)
         if not v:
             v = variants[vkey] = {"product": pname, "variant": vlabel, "sku": it.sku or (st.sku if st else ""),
-                                  "vid": st.variant_id if st else None,
+                                  "vid": st.variant_id if st else None, "price": st.price if st else None,
                                   "qty": 0.0, "revenue": 0.0, "orders": set(), "last": created,
                                   "stock": st.stock if st else None, "active": st.active if st else None, "pkey": pkey,
                                   "by_ch": defaultdict(lambda: [0.0, 0.0, set()])}
@@ -70,9 +82,15 @@ def product_analysis(s, firm_id: int, start: date, end: date, channel: str = "")
         v["revenue"] += it.amount
         v["orders"].add(oid)
         v["last"] = max(v["last"], created)
+        if it.campaign_id or it.campaign or it.discount:
+            pr = camps[it.campaign_id or it.campaign or "indirim"]["products"][pname]
+            pr[0] += it.quantity
+            pr[1] += it.amount
         p = products.get(pkey)
         if not p:
             p = products[pkey] = {"product": pname, "qty": 0.0, "revenue": 0.0, "orders": set(), "sizes": defaultdict(float),
+                                  "brand": (it.brand or (st.brand if st else "") or "").strip(),
+                                  "category": (it.category or (st.category if st else "") or "").strip(),
                                   "by_ch": defaultdict(lambda: [0.0, 0.0, set()])}
         bc = p["by_ch"][ch or WEB]
         bc[0] += it.quantity
@@ -134,10 +152,53 @@ def product_analysis(s, firm_id: int, start: date, end: date, channel: str = "")
             "out_names": ps["out_names"] if ps else [], "variants": pv,
             "daily": p["qty"] / days if days else 0,
             "by_ch": {k: {"qty": v[0], "revenue": v[1], "orders": len(v[2])} for k, v in p["by_ch"].items()},
+            "brand": p["brand"], "category": p["category"], "order_ids": p["orders"], "pkey": key,
         })
     for p in plist:   # stok kaç gün yeter: tüm kanalların toplam satış hızıyla (stok ortak)
         p["days_left"] = (p["stock"] / p["daily"]) if (p["stock"] and p["stock"] > 0 and p["daily"]) else None
     plist.sort(key=lambda x: -x["qty"])
+
+    # marka ve kategori grupları
+    def groups(field):
+        g = {}
+        for p in plist:
+            name = p[field] or "Belirtilmemiş"
+            x = g.get(name)
+            if not x:
+                x = g[name] = {"name": name, "qty": 0.0, "revenue": 0.0, "order_ids": set(), "products": [], "stock": 0.0,
+                               "stock_known": False, "out": 0, "sizes": 0}
+            x["qty"] += p["qty"]
+            x["revenue"] += p["revenue"]
+            x["order_ids"] |= p["order_ids"]
+            x["products"].append(p)
+            if p["stock"] is not None:
+                x["stock"] += p["stock"]
+                x["stock_known"] = True
+            x["out"] += p["out_count"]
+            x["sizes"] += p["size_count"]
+        out = []
+        for x in g.values():
+            out.append({"name": x["name"], "qty": x["qty"], "revenue": x["revenue"], "orders": len(x["order_ids"]),
+                        "share": x["revenue"] / total_rev * 100 if total_rev else 0, "product_count": len(x["products"]),
+                        "stock": x["stock"] if x["stock_known"] else None, "out": x["out"], "sizes": x["sizes"],
+                        "daily": x["qty"] / days if days else 0,
+                        "days_left": (x["stock"] / (x["qty"] / days)) if (x["stock_known"] and x["stock"] > 0 and x["qty"]) else None,
+                        "products": sorted(x["products"], key=lambda p: -p["qty"])[:15], "missing": x["name"] == "Belirtilmemiş"})
+        out.sort(key=lambda x: -x["revenue"])
+        return out
+    brands, categories = groups("brand"), groups("category")
+    clist = []
+    for c in camps.values():
+        top = sorted(c["products"].items(), key=lambda x: -x[1][1])
+        clist.append({"id": c["id"], "name": c["name"] or (f"Kampanya #{c['id']}" if c["id"] else "İsimsiz indirim"),
+                      "qty": c["qty"], "revenue": c["revenue"], "discount": c["discount"], "orders": len(c["orders"]),
+                      "aov": c["revenue"] / len(c["orders"]) if c["orders"] else 0,
+                      "share": c["revenue"] / total_rev * 100 if total_rev else 0,
+                      "discount_rate": c["discount"] / (c["revenue"] + c["discount"]) * 100 if (c["revenue"] + c["discount"]) else 0,
+                      "first": c["first"], "last": c["last"], "active_recently": (datetime.now() - c["last"]).days < 2,
+                      "products": [{"product": n, "qty": v[0], "revenue": v[1]} for n, v in top[:15]],
+                      "product_count": len(top)})
+    clist.sort(key=lambda x: -x["revenue"])
 
     oos = [v for v in vlist if v["stock"] is not None and v["stock"] <= 0]
     low = [v for v in vlist if v["days_left"] is not None and v["days_left"] <= LOW_DAYS]
@@ -146,6 +207,8 @@ def product_analysis(s, firm_id: int, start: date, end: date, channel: str = "")
         "days": days, "products": plist, "variants": vlist, "oos": oos, "low": low, "low_days": LOW_DAYS,
         "qty": sum(v["qty"] for v in vlist), "revenue": total_rev, "has_items": bool(rows),
         "has_stock": bool(stocks), "stock_at": stock_info[0], "matched": sum(1 for v in vlist if v["stock"] is not None),
+        "brands": brands, "categories": categories, "campaigns": clist,
+        "campaign_revenue": sum(c["revenue"] for c in clist), "campaign_discount": sum(c["discount"] for c in clist),
     }
 
 

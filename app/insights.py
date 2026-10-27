@@ -9,7 +9,7 @@ from sqlalchemy import and_, case, func, select
 from . import config
 from .channels import WEB
 from .connectors import AD_KINDS, STORE_KINDS
-from .db import AdCampaignDaily, Order
+from .db import AdCampaignDaily, Order, UnpaidHourly
 
 _cache: dict[int, tuple[float, list]] = {}
 CACHE_SECONDS = 600
@@ -53,30 +53,35 @@ def clear_cache(firm_id=None):
 
 # ---------- ödeme altyapısı ----------
 def _payment(s, firm, Alert):
+    """Web sitesi ödeme başarısı: ödenen siparişler (orders) ile yarıda kalan denemeler (unpaid_hourly) karşılaştırılır."""
     now = _now()
     out = []
-    base = s.execute(select(func.count(Order.id), func.sum(case((and_(Order.is_cancelled.is_(True), Order.payment_status != ""), 1), else_=0))).where(
-        Order.firm_id == firm.id, Order.channel == WEB, Order.payment_status != "",
-        Order.created_at >= now - timedelta(days=28), Order.created_at < now - timedelta(hours=3))).one()
-    n_base, u_base = int(base[0] or 0), int(base[1] or 0)
-    if n_base < 20:
+
+    def paid(a, b):
+        return s.scalar(select(func.count(Order.id)).where(
+            Order.firm_id == firm.id, Order.channel == WEB, Order.is_cancelled.is_(False),
+            Order.created_at >= a, Order.created_at < b)) or 0
+
+    def unpaid(a, b):
+        return int(s.scalar(select(func.coalesce(func.sum(UnpaidHourly.count), 0)).where(
+            UnpaidHourly.firm_id == firm.id, UnpaidHourly.channel == WEB,
+            UnpaidHourly.hour >= a.replace(minute=0, second=0, microsecond=0), UnpaidHourly.hour < b)) or 0)
+    b0, b1 = now - timedelta(days=28), now - timedelta(hours=3)
+    p_base, u_base = paid(b0, b1), unpaid(b0, b1)
+    if p_base + u_base < 20:
         return out
-    ratio_base = u_base / n_base
-    rows = list(s.execute(select(Order.is_cancelled, Order.created_at).where(
-        Order.firm_id == firm.id, Order.channel == WEB, Order.payment_status != "",
-        Order.created_at >= now - timedelta(hours=3))))
-    n, u = len(rows), sum(1 for r in rows if r[0])
-    if n >= 4 and u >= 3 and u / n >= max(2 * ratio_base, ratio_base + 0.3):
-        out.append(Alert("red", f"Son 3 saatte web sitesi siparişlerinin %{u / n * 100:.0f}'i ödemesiz kaldı "
-                                f"({u}/{n}); normalde %{ratio_base * 100:.0f}. Ödeme altyapısını (sanal POS) kontrol et.",
+    ratio_base = u_base / (p_base + u_base)
+    p3, u3 = paid(now - timedelta(hours=3), now + timedelta(hours=1)), unpaid(now - timedelta(hours=3), now + timedelta(hours=1))
+    n = p3 + u3
+    if n >= 4 and u3 >= 3 and u3 / n >= max(min(ratio_base * 1.5, 0.95), ratio_base + 0.2):
+        out.append(Alert("red", f"Son 3 saatte web sitesindeki ödeme denemelerinin %{u3 / n * 100:.0f}'i yarıda kaldı "
+                                f"({u3} yarıda kalan, {p3} başarılı); normalde %{ratio_base * 100:.0f}. Ödeme altyapısını (sanal POS) kontrol et.",
                          tab="siparis"))
         return out
     last_paid = s.scalar(select(func.max(Order.created_at)).where(
         Order.firm_id == firm.id, Order.channel == WEB, Order.is_cancelled.is_(False)))
     if last_paid and now - last_paid > timedelta(hours=4):
-        tries = s.scalar(select(func.count(Order.id)).where(
-            Order.firm_id == firm.id, Order.channel == WEB, Order.is_cancelled.is_(True), Order.payment_status != "",
-            Order.created_at > last_paid)) or 0
+        tries = unpaid(last_paid + timedelta(hours=1), now + timedelta(hours=1))
         if tries >= 3:
             h = (now - last_paid).total_seconds() / 3600
             out.append(Alert("red", f"Web sitesinde {h:.0f} saattir ödemesi tamamlanan sipariş yok ama {tries} ödeme denemesi "
@@ -157,19 +162,32 @@ def _stock(s, firm, Alert):
     if not a["has_stock"]:
         return []
     top = a["products"][:20]
-    out = []
+    gone_list, soon_list, lost = [], [], 0.0
     for p in top:
         gone = [v for v in p["variants"] if v["stock"] is not None and v["stock"] <= 0 and v["qty"] >= 2]
         soon = [v for v in p["variants"] if v["days_left"] is not None and v["days_left"] <= 3]
         if gone:
-            names = ", ".join((v["variant"] or v["sku"] or "?") for v in gone[:6])
-            lost = sum(v["revenue"] for v in gone) / a["days"]
-            out.append(Alert("red", f"Çok satanlardan {p['product']}: {names} tükendi. Bu bedenler günde yaklaşık "
-                                    f"{_tl(lost)} satış getiriyordu.", tab="urunler"))
+            lost += sum(v["revenue"] for v in gone) / a["days"]
+            gone_list.append((p["product"], gone))
         elif soon:
-            names = ", ".join(f"{v['variant'] or v['sku']} ({v['stock']:.0f} adet)" for v in soon[:6])
-            out.append(Alert("amber", f"{p['product']}: {names} mevcut satış hızıyla 3 gün içinde tükenecek.", tab="urunler"))
-    return out[:6]
+            soon_list.append((p["product"], soon))
+
+    def _desc(items):
+        parts = []
+        for name, vs in items[:3]:
+            nm = name if len(name) <= 42 else name[:40].rstrip() + "…"
+            parts.append(f"{nm} ({', '.join((v['variant'] or v['sku'] or '?').split('/')[-1].strip() for v in vs[:4])})")
+        more = f" ve {len(items) - 3} model daha" if len(items) > 3 else ""
+        return "; ".join(parts) + more
+
+    out = []
+    if gone_list:
+        out.append(Alert("red", f"{len(gone_list)} çok satan modelde beden tükendi. Günde yaklaşık {_tl(lost)} satış kaçıyor: "
+                                f"{_desc(gone_list)}.", tab="urunler"))
+    if soon_list:
+        out.append(Alert("amber", f"{len(soon_list)} çok satan modelde beden 3 gün içinde tükenecek. {_desc(soon_list)}.",
+                         tab="urunler"))
+    return out
 
 
 # ---------- kampanyalar ----------

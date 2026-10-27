@@ -1,0 +1,54 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% if best and best.channels %}
+<div class="card" id="cok-satanlar">
+  <div class="row between" style="margin-bottom:10px">
+    <div><h2 style="margin:0">Çok satan ürünler</h2><div class="muted small">Kanal seç · ürüne tıklayınca beden kırılımı açılır</div></div>
+  </div>
+  <div class="chips" role="tablist" aria-label="Satış kanalı" style="margin-bottom:10px">
+    {% for ch in best.channels %}<a href="#cok-satanlar" role="tab" class="{{ 'on' if loop.first }}" data-best="{{ ch.key }}">{{ ch.channel }} <span class="muted">{{ ch.qty|num }}</span></a>{% endfor %}
+  </div>
+  {% for ch in best.channels %}
+  {% set cols = 8 if best.has_stock else 5 %}
+  <div class="best-panel" data-best-panel="{{ ch.key }}" {% if not loop.first %}hidden{% endif %}>
+    <div class="table-scroll"><table class="sortable-table expandable limited">
+      <tr><th class="r">#</th><th>Ürün</th><th class="r">Adet</th><th class="r">Ciro</th><th class="r">Kanaldaki pay</th>
+        {% if best.has_stock %}<th class="r">Kalan stok</th><th class="r">Stok kaç gün yeter</th><th class="r">Tükenen beden</th>{% endif %}</tr>
+      {% for p in ch.products %}
+      {% set did = 'bd-' ~ ch.key ~ '-' ~ loop.index %}
+      <tr class="parent" tabindex="0" aria-expanded="false" aria-controls="{{ did }}">
+        <td class="r muted" data-v="{{ loop.index }}"><span class="chev" aria-hidden="true">›</span>{{ loop.index }}</td><td data-v="{{ p.product }}"><b>{{ p.product }}</b></td>
+        <td class="r" data-v="{{ p.qty }}"><b>{{ p.qty|num }}</b></td><td class="r" data-v="{{ p.revenue }}">{{ p.revenue|tl }}</td>
+        <td class="r" data-v="{{ p.share }}"><div class="share"><b class="{{ 'mp' if ch.marketplace }}" style="width:{{ (p.share * 0.6)|round(1) }}px"></b>%{{ p.share|num(1) }}</div></td>
+        {% if best.has_stock %}
+        {% if p.stock is none %}<td class="r muted">–</td><td class="r muted">–</td>
+        {% elif p.stock <= 0 %}<td class="r" data-v="0"><span class="pill bad">Tükendi</span></td><td class="r" data-v="0"><span class="pill bad">0 gün</span></td>
+        {% else %}<td class="r" data-v="{{ p.stock }}">{{ p.stock|num }}</td>
+          <td class="r" {% if p.days_left is not none %}data-v="{{ p.days_left }}"{% endif %}>{% if p.days_left is none %}<span class="muted">–</span>{% else %}<span class="pill {{ 'bad' if p.days_left < 4 else ('warn' if p.days_left < 14 else 'ok') }}">{{ (p.days_left|round(0, 'floor')|int) if p.days_left >= 1 else '<1' }} gün</span>{% endif %}</td>{% endif %}
+        <td class="r" data-v="{{ p.out_count }}">{% if p.size_count %}{% if p.out_count %}<span class="pill bad" title="{{ p.out_names|join(', ') }}">{{ p.out_count }} / {{ p.size_count }}</span>{% else %}<span class="muted">0 / {{ p.size_count }}</span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+        {% endif %}</tr>
+      <tr class="detail" id="{{ did }}" hidden><td colspan="{{ cols }}">
+        <table class="sub">
+          <tr><th>Beden</th><th>Stok kodu</th><th class="r">{{ ch.channel if ch.key != 'all' else 'Tüm kanallar' }} adet</th><th class="r">Ürün içindeki pay</th><th class="r">Ciro</th><th class="r">Sipariş</th>
+            {% if best.has_stock %}<th class="r">Kalan stok</th><th class="r">Stok kaç gün yeter</th>{% endif %}</tr>
+          {% for v in p.sizes %}
+          <tr class="{{ 'zero' if not v.qty }}"><td><b>{{ v.variant or '—' }}</b></td><td class="small muted">{{ v.sku or '—' }}</td>
+            <td class="r">{{ v.qty|num }}</td>
+            <td class="r"><div class="share"><b class="{{ 'mp' if ch.marketplace }}" style="width:{{ (v.pshare * 0.6)|round(1) }}px"></b>%{{ v.pshare|num(1) }}</div></td>
+            <td class="r">{{ v.revenue|tl if v.revenue else '–' }}</td><td class="r">{{ v.orders|num if v.orders else '–' }}</td>
+            {% if best.has_stock %}
+            {% if v.stock is none %}<td class="r muted">–</td><td class="r muted">–</td>
+            {% elif v.stock <= 0 %}<td class="r"><span class="pill bad">Tükendi</span></td><td class="r"><span class="pill bad">0 gün</span></td>
+            {% else %}<td class="r">{{ v.stock|num }}</td><td class="r">{% if v.days_left is none %}<span class="muted">{{ 'satış yok' if not v.daily_all else '–' }}</span>{% else %}<span class="pill {{ 'bad' if v.days_left < 4 else ('warn' if v.days_left < 14 else 'ok') }}">{{ (v.days_left|round(0, 'floor')|int) if v.days_left >= 1 else '<1' }} gün</span>{% endif %}</td>{% endif %}
+            {% endif %}</tr>
+          {% endfor %}
+          <tr class="total"><td>Toplam</td><td></td><td class="r">{{ p.qty|num }}</td><td class="r">%100</td><td class="r">{{ p.revenue|tl }}</td><td class="r">{{ p.orders|num }}</td>
+            {% if best.has_stock %}<td class="r">{{ p.stock|num if p.stock is not none else '–' }}</td><td></td>{% endif %}</tr>
+        </table>
+      </td></tr>
+      {% endfor %}
+    </table></div>
+  </div>
+  {% endfor %}
+  {% if not best.has_stock %}<p class="muted small" style="margin-bottom:0">Kalan stok ve kaç günlük stok kaldığı, mağazadan stok verisi gelince görünecek.</p>{% endif %}
+</div>
+{% endif %}

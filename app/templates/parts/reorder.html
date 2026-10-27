@@ -1,0 +1,108 @@
+{% from "_macros.html" import chg, daypill, xlsbtn, stockcell, help %}
+{% set base_q = '?v=siparis&lead=' ~ lead ~ '&cover=' ~ cover %}
+<details class="card settings-d">
+  <summary><span><b>Hesap ayarları:</b> {{ lead }} gün {{ 'üretim / tedarik' if mod != 'beden' else 'tedarik' }} süresi · {{ cover }} günlük stok{% if mod != 'beden' %} · seri {{ seri if seri else 'otomatik' }}{% if moq %} · en az {{ moq }} adet{% endif %}{% endif %}</span>
+    <span class="row" style="gap:10px"><a class="link small" href="{{ base_q }}{{ '&seri=' ~ seri ~ '&moq=' ~ moq if mod == 'beden' else '&mod=beden' }}" onclick="event.stopPropagation()">{{ 'Ürün kartlarına dön' if mod == 'beden' else 'Tüm bedenler listesi' }}</a><span class="btn sm">Değiştir</span></span></summary>
+  <form method="get" class="row" style="gap:14px;align-items:flex-end;margin-top:12px">
+    <input type="hidden" name="v" value="siparis">
+    {% if mod == 'beden' %}<input type="hidden" name="mod" value="beden">{% endif %}
+    <label style="width:170px">{{ 'Üretim / tedarik süresi (gün)' if mod != 'beden' else 'Tedarik süresi (gün)' }}<input type="number" id="lead" name="lead" min="1" max="180" value="{{ lead }}"></label>
+    <label style="width:190px">Kaç günlük stok istiyorum<input type="number" id="cover" name="cover" min="1" max="365" value="{{ cover }}"></label>
+    {% if mod != 'beden' %}
+    <label style="width:170px">Bir seride kaç adet<input type="number" id="seri" name="seri" min="0" max="500" value="{{ seri }}" placeholder="0 = otomatik"></label>
+    <label style="width:190px">Model başı en az adet<input type="number" id="moq" name="moq" min="0" max="100000" value="{{ moq }}" placeholder="0 = sınır yok"></label>
+    {% endif %}
+    <button class="btn primary sm">Hesapla</button>
+    {{ help('Her model ve renk için asorti, bedenlerin ihtiyacına göre kurulur: stoğu yeten beden seride yer almaz, eksiği büyük olan beden daha fazla pay alır. Seri sayısı toplam ihtiyacı karşılayacak kadardır. “Bir seride kaç adet” 0 ise otomatik seçilir; “en az adet” üretim / tedarikçi minimumudur.' if mod != 'beden' else 'Öneri = günlük satış × (tedarik süresi + istenen stok günü) − mevcut stok. Siparişin gelmesini beklerken satış devam ettiği için tedarik süresi de hesaba katılır.') }}
+  </form>
+</details>
+{% if mod != 'beden' %}
+{% if not d.has_stock %}<div class="alert amber">Stok bilgisi henüz yok; öneriler stok senkronizasyonundan sonra görünecek.</div>
+{% else %}
+<div class="filters" data-filter-for="as-cards" style="margin-bottom:12px">
+  <input type="search" id="as-q" data-f="q" placeholder="Model, renk veya stok kodu ara…" aria-label="Ara">
+  <label class="inline small muted"><input type="checkbox" id="as-u" data-f="u" value="1"> Sadece acil</label>
+  <select id="as-s" class="sort-select" data-sort-list="as-cards" aria-label="Sırala">
+    <option value="urgency">Aciliyete göre</option><option value="total">Üretilecek adede göre</option><option value="sold">Satışa göre</option><option value="name">Model adına göre</option>
+  </select>
+  <span class="count" data-count></span>
+  {{ xlsbtn(xq, 'Tümünü Excel olarak indir') }}
+</div>
+<div class="pcards" id="as-cards">
+  {% for g in d.groups %}
+  <details class="pcard {{ 'urgent' if g.urgent }}" data-row data-u="{{ 1 if g.urgent else 0 }}" data-urgency="{{ loop.index }}" data-total="{{ g.total }}" data-sold="{{ g.sold }}" data-name="{{ g.product }}"
+           data-q="{{ g.product }} {{ g.color }} {% for r in g.rows %}{{ r.sku }} {% endfor %}">
+    <summary>
+      <div class="pc-main">
+        <div class="pc-title"><span class="chev" aria-hidden="true">›</span><b>{{ g.product }}</b>{% if g.color %} <span class="tag">{{ g.color }}</span>{% endif %}</div>
+        <div class="pc-sizes">{% for r in g.rows %}{% if r.ratio %}<span class="size {{ 'out' if r.stock <= 0 }}">{{ r.size }} <i>{{ r.make|num }}</i></span>{% endif %}{% endfor %}</div>
+        {% if g.short %}<div class="small" style="color:var(--warn)">Seri küçük: {{ g.short|join(', ') }} ihtiyacın altında kalıyor</div>{% endif %}
+      </div>
+      <div class="pc-stats">
+        <div><span class="muted small">Verilecek</span><b>{{ g.total|num }} adet</b><span class="muted small">{{ g.series }} seri × {{ g.series_size }}</span></div>
+        <div><span class="muted small">30 gün satış</span><b>{{ g.sold|num }}</b></div>
+        <div><span class="muted small">En erken biten</span>{{ daypill(g.min_days) }}</div>
+      </div>
+    </summary>
+    <div class="pc-body">
+      <div class="row between" style="margin-bottom:8px">
+        <div class="small"><b>Asorti:</b> {{ g.ratio_text }} <span class="muted">(1 seri = {{ g.series_size }} adet)</span></div>
+        <div class="row" style="gap:6px">
+          <button type="button" class="btn sm" data-copy-card>Listeyi kopyala</button>
+          {{ xlsbtn(xq ~ '&model=' ~ (g.product|urlencode) ~ '&renk=' ~ (g.color|urlencode), 'Excel') }}
+        </div>
+      </div>
+      <div class="table-scroll"><table class="sub copy-src">
+        <tr><th>Beden</th><th>Stok kodu</th><th class="r">30 gün satış</th><th class="r">Günlük</th><th class="r">Stok</th><th class="r">Kalan</th><th class="r">İhtiyaç</th><th class="r">Seride</th><th class="r">Verilecek</th><th class="r">Sonra kaç gün yeter</th></tr>
+        {% for r in g.rows %}
+        <tr class="{{ 'zero' if not r.make }}"><td><b>{{ r.size }}</b></td><td class="small muted">{{ r.sku or '—' }}</td>
+          <td class="r">{{ r.sold|num }}</td><td class="r">{{ r.daily|num(1) }}</td><td class="r">{{ r.stock|num }}</td>
+          <td class="r">{{ daypill(r.days_left) }}</td><td class="r">{{ r.need|round(0, 'ceil')|int if r.need > 0 else 0 }}</td>
+          <td class="r">{{ r.ratio }}</td><td class="r"><b>{{ r.make|num }}</b></td><td class="r">{{ daypill(r.days_after) }}</td></tr>
+        {% endfor %}
+        <tr class="total"><td colspan="2">Toplam</td><td class="r">{{ g.sold|num }}</td><td></td><td class="r">{{ g.rows|sum(attribute='stock')|num }}</td><td></td>
+          <td class="r">{{ g.need|round(0, 'ceil')|int }}</td><td class="r">{{ g.series_size }}</td><td class="r">{{ g.total|num }}</td><td></td></tr>
+      </table></div>
+    </div>
+  </details>
+  {% endfor %}
+</div>
+{% if not d.groups %}<div class="card"><p class="muted" style="margin:0">Bu ayarlarla sipariş ya da üretim gereken model yok.</p></div>{% endif %}
+{% endif %}
+{% elif not d.has_stock %}<div class="alert amber">Stok bilgisi henüz yok; öneriler stok senkronizasyonundan sonra görünecek.</div>
+{% else %}
+{% if d.groups %}
+<div class="card">
+  <div class="row between" style="margin-bottom:10px">
+    <div><h2 style="margin:0">Markaya göre sipariş listesi</h2><div class="muted small">Markaya tıklayınca bedenler açılır · tedarikçiye göndermek için listeyi kopyalayabilirsin</div></div>
+    {{ xlsbtn(xq) }}
+  </div>
+  <div class="filters" data-filter-for="ro-table">
+    <input type="search" id="ro-q" data-f="q" placeholder="Marka, ürün veya stok kodu ara…" aria-label="Ara">
+    <span class="count" data-count></span>
+  </div>
+  <div class="table-scroll"><table class="sortable-table expandable" id="ro-table">
+    <tr><th>Marka</th><th class="r">Beden</th><th class="r">Acil</th><th class="r">Önerilen adet</th><th class="r">Değer</th><th data-nosort></th></tr>
+    {% for g in d.groups %}
+    <tr data-row class="parent" tabindex="0" aria-expanded="false" aria-controls="ro-{{ loop.index }}" data-q="{{ g.brand }} {% for r in g.rows %}{{ r.product }} {{ r.sku }} {% endfor %}">
+      <td data-v="{{ g.brand }}"><span class="chev" aria-hidden="true">›</span><b>{{ g.brand }}</b></td>
+      <td class="r" data-v="{{ g.rows|length }}">{{ g.rows|length }}</td>
+      <td class="r" data-v="{{ g.acil }}">{% if g.acil %}<span class="pill bad">{{ g.acil }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>
+      <td class="r" data-v="{{ g.qty }}"><b>{{ g.qty|num }}</b></td><td class="r" data-v="{{ g.value }}">{{ g.value|tl }}</td>
+      <td class="r"><button type="button" class="btn sm" data-copy="ro-{{ loop.index }}">Listeyi kopyala</button></td>
+    </tr>
+    <tr class="detail" id="ro-{{ loop.index }}" hidden><td colspan="6">
+      <table class="sub copy-src">
+        <tr><th>Ürün</th><th>Beden</th><th>Stok kodu</th><th class="r">{{ d.window }} gün satış</th><th class="r">Günlük</th><th class="r">Stok</th><th class="r">Kalan</th><th class="r">Önerilen</th></tr>
+        {% for r in g.rows %}
+        <tr><td>{{ r.product }}</td><td><b>{{ r.variant }}</b></td><td class="small muted">{{ r.sku or '—' }}</td>
+          <td class="r">{{ r.sold|num }}</td><td class="r">{{ r.daily|num(1) }}</td><td class="r">{{ r.stock|num }}</td>
+          <td class="r">{{ daypill(r.days_left) }}</td><td class="r"><b>{{ r.suggest|num }}</b></td></tr>
+        {% endfor %}
+      </table>
+    </td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% else %}<div class="card"><p class="muted" style="margin:0">Bu ayarlarla sipariş verilmesi gereken beden yok.</p></div>{% endif %}
+{% endif %}

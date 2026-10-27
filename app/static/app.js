@@ -66,7 +66,7 @@ function wireFilters(bar) {
   const count = bar.querySelector('[data-count]');
   const apply = () => {
     let shown = 0, total = 0;
-    table.querySelectorAll('tr[data-row]').forEach(tr => {
+    table.querySelectorAll('[data-row]').forEach(tr => {
       total++;
       let ok = true;
       inputs.forEach(el => {
@@ -176,4 +176,120 @@ document.addEventListener('click', e => {
   const box = a.closest('.card');
   box.querySelectorAll('[data-best]').forEach(x => x.classList.toggle('on', x === a));
   box.querySelectorAll('[data-best-panel]').forEach(p => { p.hidden = p.dataset.bestPanel !== a.dataset.best; });
+});
+
+/* ---- Ürün analizi: özet kartına tıklayınca sadece o bölüm ---- */
+document.addEventListener('DOMContentLoaded', () => {
+  const kpis = document.querySelectorAll('[data-focus]');
+  if (!kpis.length) return;
+  const sections = [...document.querySelectorAll('[data-section]')];
+  const bar = document.getElementById('focus-bar'), label = document.getElementById('focus-label');
+  const names = { 'tukenen': 'Sadece satışı olup stoğu tükenen bedenler gösteriliyor', 'azalan': 'Sadece stoğu azalan bedenler gösteriliyor',
+                  'cok-satan': 'Sadece çok satan ürünler gösteriliyor', 'bedenler': 'Sadece beden bazlı satışlar gösteriliyor' };
+  const focus = (id, push) => {
+    const ok = sections.some(s => s.id === id);
+    sections.forEach(s => { s.hidden = ok && s.id !== id; });
+    kpis.forEach(k => k.classList.toggle('on', ok && k.dataset.focus === id));
+    bar.hidden = !ok;
+    if (ok) { label.textContent = names[id] || ''; document.getElementById(id).style.marginTop = '0'; }
+    else sections.forEach(s => { s.style.marginTop = ''; });
+    if (push) history.replaceState(null, '', ok ? '#' + id : location.pathname + location.search);
+  };
+  kpis.forEach(k => k.addEventListener('click', e => {
+    e.preventDefault();
+    focus(k.classList.contains('on') ? '' : k.dataset.focus, true);
+    bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
+  document.getElementById('focus-clear').addEventListener('click', e => { e.preventDefault(); focus('', true); });
+  if (location.hash) focus(location.hash.slice(1), false);
+  window.addEventListener('hashchange', () => focus(location.hash.slice(1), false));
+});
+
+/* ---- Firma kartlarındaki bildirim zili ---- */
+document.addEventListener('click', e => {
+  const btn = e.target.closest('button.bell');
+  const open = document.querySelector('button.bell[aria-expanded="true"]');
+  if (btn) {
+    e.preventDefault(); e.stopPropagation();
+    const pop = document.getElementById(btn.getAttribute('aria-controls'));
+    const willOpen = btn.getAttribute('aria-expanded') !== 'true';
+    if (open && open !== btn) { open.setAttribute('aria-expanded', 'false'); document.getElementById(open.getAttribute('aria-controls')).hidden = true; }
+    btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+    pop.hidden = !willOpen;
+    return;
+  }
+  if (open && !e.target.closest('.notes')) {
+    open.setAttribute('aria-expanded', 'false');
+    document.getElementById(open.getAttribute('aria-controls')).hidden = true;
+  }
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const open = document.querySelector('button.bell[aria-expanded="true"]');
+  if (open) { open.setAttribute('aria-expanded', 'false'); document.getElementById(open.getAttribute('aria-controls')).hidden = true; open.focus(); }
+});
+
+/* ---- Sipariş önerisi: listeyi panoya kopyala (sekmeyle ayrılmış, Excel'e yapıştırılabilir) ---- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-copy]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const t = document.querySelector('#' + b.dataset.copy + ' table.copy-src');
+  if (!t) return;
+  const text = [...t.querySelectorAll('tr')].map(r => [...r.children].map(c => c.innerText.trim()).join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(text); toast('✓ Liste kopyalandı; Excel ya da e-postaya yapıştırabilirsin.'); }
+  catch (err) { toast('Kopyalanamadı: ' + err.message, 6000); }
+});
+
+/* ---- Ürün kartları: sıralama ve kopyalama ---- */
+document.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-sort-list]');
+  if (!sel) return;
+  const box = document.getElementById(sel.dataset.sortList);
+  const key = sel.value;
+  [...box.children].sort((a, b) => key === 'name' ? a.dataset.name.localeCompare(b.dataset.name, 'tr')
+    : key === 'urgency' ? (+a.dataset.urgency) - (+b.dataset.urgency) : (+b.dataset[key]) - (+a.dataset[key]))
+    .forEach(c => box.appendChild(c));
+});
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-copy-card]');
+  if (!b) return;
+  e.preventDefault();
+  const card = b.closest('details');
+  const t = card.querySelector('table.copy-src');
+  const head = card.querySelector('.pc-title').innerText.replace('›', '').trim();
+  const text = head + '\n' + [...t.querySelectorAll('tr')].map(r => [...r.children].map(c => c.innerText.trim()).join('\t')).join('\n');
+  try { await navigator.clipboard.writeText(text); toast('✓ Liste kopyalandı; Excel ya da e-postaya yapıştırabilirsin.'); }
+  catch (err) { toast('Kopyalanamadı: ' + err.message, 6000); }
+});
+
+/* ---- Uzun tablolar: ilk açılışta 10 satır, "Tümünü göster" ---- */
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('table.limited').forEach(t => {
+    const rows = [...t.querySelectorAll(':scope > tbody > tr, :scope > tr')].filter(r => r.querySelector('td') && !r.classList.contains('detail'));
+    if (rows.length <= 12) return;
+    rows.slice(10).forEach(r => { r.classList.add('lim-hide'); const d = r.nextElementSibling; if (d && d.classList.contains('detail')) d.classList.add('lim-hide'); });
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn sm lim-more'; b.textContent = 'Tümünü göster (' + rows.length + ')';
+    b.addEventListener('click', () => { t.querySelectorAll('.lim-hide').forEach(r => r.classList.remove('lim-hide')); b.remove(); });
+    (t.closest('.table-scroll') || t).after(b);
+  });
+  // yardım balonu dışarı tıklayınca kapansın
+  document.addEventListener('click', e => { document.querySelectorAll('details.help[open], details.fswitch[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; }); });
+});
+
+/* ---- Tema: otomatik -> açık -> koyu ---- */
+document.addEventListener('DOMContentLoaded', () => {
+  const b = document.getElementById('themeBtn'); if (!b) return;
+  const names = {auto: 'otomatik (cihaza göre)', light: 'açık', dark: 'koyu'};
+  const cur = () => document.documentElement.dataset.theme || 'auto';
+  const label = () => { const t = 'Tema: ' + names[cur()]; b.title = t; b.setAttribute('aria-label', t); };
+  label();
+  b.addEventListener('click', () => {
+    const next = {auto: 'light', light: 'dark', dark: 'auto'}[cur()];
+    if (next === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = next;
+    try { next === 'auto' ? localStorage.removeItem('tema') : localStorage.setItem('tema', next); } catch (e) {}
+    label();
+    if (window.Chart) setTimeout(() => location.reload(), 50);
+  });
 });

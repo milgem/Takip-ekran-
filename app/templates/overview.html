@@ -1,88 +1,54 @@
 {% extends "base.html" %}
-{% from "_macros.html" import chg, range_chips %}
+{% from "_macros.html" import chg, logo %}
 {% set active = 'home' %}
 {% block content %}
-<div class="row between" style="margin-bottom:12px">
+<div class="ov-head">
   <div>
-    <h1>Genel bakış</h1>
-    <div class="muted small">{{ start.strftime('%d.%m.%Y') }}{% if end != start %} – {{ end.strftime('%d.%m.%Y') }}{% endif %} · son güncelleme {{ last_sync|ago }}</div>
+    <div class="muted small">{{ now.strftime('%d.%m.%Y %H:%M') }} · son güncelleme {{ last_sync|ago }}
+      <button class="linkbtn" onclick="post('/senkron', this); setTimeout(()=>location.reload(), 20000)">Şimdi güncelle</button></div>
+    <h1 class="lead">{% if not cards %}Hoş geldin{% elif attention %}Bugün {{ attention }} firma ilgini bekliyor{% else %}Bugün her şey yolunda{% endif %}</h1>
   </div>
-  <button class="btn sm" onclick="post('/senkron', this); setTimeout(()=>location.reload(), 20000)">↻ Şimdi güncelle</button>
+  <nav class="seg" aria-label="Dönem">
+    <a href="/?p=bugun" class="{{ 'on' if preset == 'bugun' }}">Bugün</a>
+    <a href="/?p=7g" class="{{ 'on' if preset == '7g' }}">7 gün</a>
+    <a href="/?p=30g" class="{{ 'on' if preset == '30g' }}">30 gün</a>
+  </nav>
 </div>
-{{ range_chips(preset, start, end, '/') }}
 
 {% if not cards %}
-  <div class="card empty" style="margin-top:16px">
-    <p>Henüz firma eklenmedi.</p>
-    <a class="btn primary" href="/ayarlar">İlk firmayı ekle</a>
-  </div>
+  <div class="card empty"><p>Henüz firma eklenmedi.</p><a class="btn primary" href="/ayarlar">İlk firmayı ekle</a></div>
 {% else %}
-<div class="kpis">
+<section class="kpis k4">
   <div class="card kpi"><div class="l">Toplam ciro</div><div class="v">{{ tot.revenue|tl }}</div>
-    {% if tot.mp_revenue %}<div class="sub">Web {{ tot.web_revenue|tl }} · Pazaryeri {{ tot.mp_revenue|tl }}</div>{% endif %}</div>
-  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ tot.orders|num }}</div></div>
-  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ tot.spend|tl }}</div></div>
-  <div class="card kpi"><div class="l">ROAS (web)</div><div class="v">{{ tot.roas|num(2) if tot.roas else '–' }}</div></div>
-  {% if tot.leads %}<div class="card kpi"><div class="l">Lead</div><div class="v">{{ tot.leads|num }}</div></div>{% endif %}
-  <div class="card kpi"><div class="l">Bekleyen sipariş</div><div class="v">{{ pending_total|num }}</div></div>
-</div>
+    <div class="sub">{{ chg(rev_chg) }} {{ 'dün bu saate göre' if preset == 'bugun' else 'önceki döneme göre' }}</div></div>
+  <div class="card kpi"><div class="l">Sipariş</div><div class="v">{{ tot.orders|num }}</div><div class="sub">{{ cards|length }} firma · {{ pending_total }} bekleyen</div></div>
+  <div class="card kpi"><div class="l">Reklam harcaması</div><div class="v">{{ tot.spend|tl }}</div><div class="sub">ROAS (web) {{ tot.roas|num(1) if tot.roas else '–' }}</div></div>
+  <div class="card kpi"><div class="l">Açık uyarı</div><div class="v {{ 'bad-t' if n_red }}">{{ n_red }} acil</div><div class="sub">{{ n_amber }} takip</div></div>
+</section>
 
-{% if alerts %}
-<div class="alerts">
-  {% for firm, a in alerts %}
-  <a class="alert {{ a.level }}" href="/firma/{{ firm.id }}{{ '/urunler' if a.tab == 'urunler' else ('#' ~ a.tab if a.tab else '') }}"><span>{{ '●' if a.level == 'red' else ('✓' if a.level == 'green' else '▲') }}</span><span class="alert-text"><b>{{ firm.name }}</b> — {{ a.text }}</span>{% if a.smart %}<span class="smart-tag">Akıllı uyarı</span>{% endif %}</a>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if cards|length > 1 %}
-<div class="row" style="justify-content:flex-end;margin-bottom:10px">
-  <label class="inline small muted" for="card-sort">Sırala
-    <select id="card-sort" data-sort-cards="firm-grid" class="sort-select">
-      <option value="default">Varsayılan</option><option value="revenue">Ciro (büyükten küçüğe)</option>
-      <option value="spend">Reklam harcaması</option><option value="roas">ROAS</option>
-      <option value="orders">Sipariş sayısı</option><option value="leads">Lead</option><option value="name">Firma adı (A–Z)</option>
-    </select></label>
-</div>
-{% endif %}
-<div class="grid" id="firm-grid">
+<div class="sec-head"><h2>Firmalar</h2><span class="muted small">Dikkat isteyenler üstte</span></div>
+<div class="frows">
 {% for c in cards %}
   {% set f = c.firm %}
-  <a class="card" data-name="{{ f.name }}" data-revenue="{{ c.cur.revenue }}" data-spend="{{ c.cur.spend }}"
-     data-roas="{{ c.cur.roas or '' }}" data-orders="{{ c.cur.orders }}" data-leads="{{ c.cur.leads }}" href="/firma/{{ f.id }}?p={{ preset if preset != 'ozel' else '30g' }}">
-    <div class="firm-head">
-      <span class="dot" style="background:{{ f.color }}"></span>
-      <h3>{{ f.name }}</h3>
-      <div class="tags">
-        {% for i in f.integrations %}<span class="tag {{ 'err' if i.last_ok is false }}">{{ REGISTRY[i.kind].TITLE.split(' ')[0] }}</span>{% endfor %}
-      </div>
-    </div>
-    <div class="mgrid">
-      {% if c.has_store %}
-      <div class="m"><div class="l">Ciro</div><div class="v">{{ c.cur.revenue|tl }}</div>{{ chg(c.chg.revenue) }}</div>
-      <div class="m"><div class="l">Sipariş</div><div class="v">{{ c.cur.orders|num }}</div>{{ chg(c.chg.orders) }}</div>
-      <div class="m"><div class="l">Sepet ort.</div><div class="v">{{ c.cur.aov|tl }}</div>{{ chg(c.chg.aov) }}</div>
-      {% endif %}
-      {% if c.has_ads %}
-      <div class="m"><div class="l">Reklam</div><div class="v">{{ c.cur.spend|tl }}</div>{{ chg(c.chg.spend, inverse=True) }}</div>
-      {% if c.has_store %}
-      <div class="m"><div class="l">ROAS (web)</div><div class="v">{{ c.cur.roas|num(2) if c.cur.roas else '–' }}</div>{{ chg(c.chg.roas) }}</div>
-      {% else %}
-      <div class="m"><div class="l">Lead</div><div class="v">{{ c.cur.leads|num }}</div>{{ chg(c.chg.leads) }}</div>
-      <div class="m"><div class="l">Lead başı</div><div class="v">{{ c.cur.cpl|tl }}</div>{{ chg(c.chg.cpl, inverse=True) }}</div>
-      {% endif %}
-      {% endif %}
-      {% if c.has_store %}
-      <div class="m"><div class="l">Bekleyen</div><div class="v">{{ c.pending }}</div>{% if c.pending_old %}<span class="badge down">{{ c.pending_old }} gecikmiş</span>{% endif %}</div>
-      {% endif %}
-    </div>
-    {% if c.has_mp and c.cur.revenue %}
-    {% set w = c.cur.web_share or 0 %}
-    <div class="split"><i style="width:{{ w }}%;background:var(--accent)"></i><i style="width:{{ 100 - w }}%;background:var(--mp)"></i></div>
-    <div class="split-legend"><span>Web {{ c.cur.web_revenue|tl }} · %{{ w|round|int }}</span><span>Pazaryeri {{ c.cur.mp_revenue|tl }} · %{{ (100 - w)|round|int }}</span></div>
+  <a class="frow {{ 'lvl-red' if c.n_red else ('lvl-amber' if c.n_amber else 'lvl-ok') }}" href="/firma/{{ f.id }}">
+    <span class="frow-id">{{ logo(f, 48) }}
+      <span class="frow-name"><b>{{ f.name }}</b>
+        <span class="frow-tags">
+          {% for a in c.alerts[:2] %}<span class="tagp {{ a.level }}">{{ a.text|short }}</span>{% endfor %}
+          {% if c.alerts|length > 2 %}<span class="tagp more">+{{ c.alerts|length - 2 }}</span>{% endif %}
+          {% if not c.alerts and f.integrations %}<span class="tagp green">Her şey yolunda</span>{% endif %}
+          {% if not f.integrations %}<span class="tagp amber">Bağlantı eklenmedi</span>{% endif %}
+        </span></span></span>
+    {% if c.has_store %}
+    <span class="m"><span class="l">Ciro</span><span class="v">{{ c.cur.revenue|tl }}</span>{{ chg(c.chg.revenue) }}</span>
+    <span class="m"><span class="l">Sipariş</span><span class="v">{{ c.cur.orders|num }}</span></span>
+    {% else %}
+    <span class="m"><span class="l">Lead</span><span class="v">{{ c.cur.leads|num }}</span>{{ chg(c.chg.leads) }}</span>
+    <span class="m"><span class="l">Lead başı</span><span class="v">{{ c.cur.cpl|tl if c.cur.cpl else '–' }}</span></span>
     {% endif %}
-    {% for a in c.alerts[:2] %}<div class="firm-alert {{ a.level }}">{{ a.text }}</div>{% endfor %}
-    {% if not f.integrations %}<div class="firm-alert amber">Henüz bağlantı eklenmedi</div>{% endif %}
+    <span class="m"><span class="l">Reklam</span><span class="v">{{ c.cur.spend|tl if c.cur.spend else '–' }}</span></span>
+    <span class="m"><span class="l">ROAS</span><span class="v">{{ c.cur.roas|num(1) if c.cur.roas else '–' }}</span></span>
+    <svg class="frow-go" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </a>
 {% endfor %}
 </div>

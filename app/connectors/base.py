@@ -13,6 +13,12 @@ class ItemRow:
     variant: str = ""             # beden / seçenek metni (platform veriyorsa)
     quantity: float = 0
     amount: float = 0             # satır toplamı (adet × birim fiyat)
+    discount: float = 0           # bu satıra düşen kampanya / indirim tutarı
+    cost: float = 0               # satırın toplam maliyeti (platform veriyorsa)
+    campaign_id: str = ""         # site kampanyası / indirim kodu kimliği
+    campaign: str = ""            # kampanya adı ya da indirim kodu
+    brand: str = ""               # platform satırda veriyorsa
+    category: str = ""
 
 
 @dataclass
@@ -27,6 +33,8 @@ class StockRow:
     stock: float = 0
     price: float = 0
     active: bool = True
+    brand: str = ""
+    category: str = ""
 
 
 @dataclass
@@ -42,6 +50,8 @@ class OrderRow:
     channel: str = "Web sitesi"   # Web sitesi | Trendyol | Hepsiburada | Amazon | …
     payment_status: str = ""      # ödeme statüsü (sipariş statüsünden ayrı)
     customer: str = ""            # müşteri adı soyadı
+    commission: float = 0         # pazaryeri komisyonu
+    cost: float = 0               # sipariş maliyeti (platform veriyorsa)
     items: list | None = None     # list[ItemRow]; None = kalem bilgisi alınamadı (mevcut kalemler korunur)
 
 

@@ -25,7 +25,7 @@ Panelde istenen: **mağaza adresi** (`xxx.myshopify.com`) + **erişim token'ı**
 
 **Yoksa (1 Ocak 2026'dan sonra yeni tip):**
 1. Mağaza sahibinin hesabıyla **dev.shopify.com** (Dev Dashboard) → **Create app**.
-2. Uygulamanın sürümünde Admin API izinlerinden **read_orders** seçin (60 günden eski siparişler gerekiyorsa **read_all_orders** de ekleyin) ve sürümü yayınlayın.
+2. Uygulamanın sürümünde Admin API izinlerinden **read_orders**, **read_products** ve **read_inventory** seçin (stok ve beden analizi için); müşteri adlarının görünmesi için **read_customers** de ekleyin. 60 günden eski siparişler gerekiyorsa **read_all_orders** de ekleyin. Sürümü yayınlayın.
 3. Uygulamayı ilgili mağazaya **yükleyin (Install)**.
 4. **Settings** sayfasındaki **Client ID** ve **Client Secret**'ı panele girin. Panel token'ı kendisi alır ve her gün yeniler.
 
